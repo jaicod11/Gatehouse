@@ -1,0 +1,6 @@
+package-lock.json
+.expo/
+dist/
+web-build/
+ios/
+android/
