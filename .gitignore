@@ -50,3 +50,6 @@ yarn-error.*
 # AI assistant files
 CLAUDE.md
 .claude/
+
+# AI assistant files
+AGENTS.md\/
