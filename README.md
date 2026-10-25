@@ -3,7 +3,9 @@
 Sign in with Google, restricted to one company email domain, in a single Expo app for Android, iOS
 and the web.
 
-[![CI](https://github.com/jaicod11/Gatehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/jaicod11/Gatehouse/actions/workflows/ci.yml)
+[![CI](https://github.com/jaicod11/Gatehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/jaicod11/Gatehouse/actions/workflows/ci.yml) [![Netlify Status](https://api.netlify.com/api/v1/badges/35ef3d4b-c07e-4ea7-975c-91b22cd44d00/deploy-status)](https://app.netlify.com/projects/gatehouse-jaideep/deploys)
+
+[![Expo SDK 57](https://img.shields.io/badge/Expo%20SDK%2057-1C2024?style=flat&logo=expo&logoColor=white)](https://expo.dev) [![React Native 0.86](https://img.shields.io/badge/React%20Native%200.86-61DAFB?style=flat&logo=react&logoColor=white)](https://reactnative.dev) [![React 19](https://img.shields.io/badge/React%2019-61DAFB?style=flat&logo=react&logoColor=white)](https://react.dev) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![Expo Router](https://img.shields.io/badge/Expo%20Router-1C2024?style=flat&logo=expo&logoColor=white)](https://docs.expo.dev/router/introduction/) [![Supabase: Auth + Postgres](https://img.shields.io/badge/Supabase%3A%20Auth%20%2B%20Postgres-3FCF8E?style=flat&logo=supabase&logoColor=white)](https://supabase.com) [![Google OAuth 2.0](https://img.shields.io/badge/Google%20OAuth%202.0-4285F4?style=flat&logo=google&logoColor=white)](https://developers.google.com/identity/protocols/oauth2) [![NativeWind / Tailwind](https://img.shields.io/badge/NativeWind%20%2F%20Tailwind-06B6D4?style=flat&logo=tailwindcss&logoColor=white)](https://www.nativewind.dev) [![Jest](https://img.shields.io/badge/Jest-C21325?style=flat&logo=jest&logoColor=white)](https://jestjs.io) [![Netlify](https://img.shields.io/badge/Netlify-00C7B7?style=flat&logo=netlify&logoColor=white)](https://www.netlify.com)
 
 **Live demo:** [https://gatehouse-jaideep.netlify.app](https://gatehouse-jaideep.netlify.app). It
 allows **@hbplus.fit** accounts, as in the brief. It was developed and tested with
