@@ -12,7 +12,8 @@ jest.mock('@/lib/supabase', () => jest.requireActual('@/test-utils/fake-supabase
 const APP_DIR = './src/app';
 const allowedEmail = `grace.hopper@${env.allowedDomain}`;
 const LOGIN_HEADING = 'Sign in to Gatehouse';
-const ADMIN_HEADING = 'Admin area';
+// Unique to the admin screen (the dashboard also has an "Admin panel" card).
+const ADMIN_SEARCH = 'Search by name or email';
 
 function signedInAs(email: string, role: 'admin' | 'user' = 'user') {
   const session = makeSession(email, { full_name: 'Grace Hopper' });
@@ -31,7 +32,7 @@ describe('route guards', () => {
 
     await waitFor(() => expect(screen).toHavePathname('/login'));
     expect(screen.getByText(LOGIN_HEADING)).toBeTruthy();
-    expect(screen.queryByText('Grace Hopper')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Grace Hopper' })).toBeNull();
   });
 
   it('sends a signed-in user from /login to /dashboard', async () => {
@@ -39,7 +40,7 @@ describe('route guards', () => {
     renderRouter(APP_DIR, { initialUrl: '/login' });
 
     await waitFor(() => expect(screen).toHavePathname('/dashboard'));
-    expect(screen.getByText(allowedEmail)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Grace Hopper' })).toBeTruthy();
     expect(screen.queryByText(LOGIN_HEADING)).toBeNull();
   });
 
@@ -47,7 +48,7 @@ describe('route guards', () => {
     signedInAs(allowedEmail);
     renderRouter(APP_DIR, { initialUrl: '/dashboard' });
 
-    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Grace Hopper' })).toBeTruthy());
     expect(screen).toHavePathname('/dashboard');
   });
 
@@ -57,11 +58,11 @@ describe('route guards', () => {
     renderRouter(APP_DIR, { initialUrl: '/dashboard' });
 
     expect(screen.getByLabelText('Checking your session…')).toBeTruthy();
-    expect(screen.queryByText('Grace Hopper')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Grace Hopper' })).toBeNull();
     expect(screen.queryByText(LOGIN_HEADING)).toBeNull();
 
     await act(async () => finishRestore());
-    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Grace Hopper' })).toBeTruthy());
     expect(screen).toHavePathname('/dashboard');
   });
 
@@ -73,13 +74,13 @@ describe('route guards', () => {
     await waitFor(() => expect(fakeSupabase.emittedEvents()).toContain('SIGNED_OUT'));
     expect(screen.getByText(ACCESS_DENIED_MESSAGE)).toBeTruthy();
     expect(fakeSupabase.auth.signOut).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText('Grace Hopper')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Grace Hopper' })).toBeNull();
   });
 
   it('lands on /login after signing out from the dashboard', async () => {
     signedInAs(allowedEmail);
     renderRouter(APP_DIR, { initialUrl: '/dashboard' });
-    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Grace Hopper' })).toBeTruthy());
 
     fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
 
@@ -110,7 +111,7 @@ describe('route guards', () => {
     });
 
     await waitFor(() => expect(screen).toHavePathname('/dashboard'));
-    expect(screen.getByText('Grace Hopper')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Grace Hopper' })).toBeTruthy();
   });
 
   it('signs out with a message when the profile cannot be loaded', async () => {
@@ -121,7 +122,7 @@ describe('route guards', () => {
     await waitFor(() => expect(fakeSupabase.emittedEvents()).toContain('SIGNED_OUT'));
     expect(screen).toHavePathname('/login');
     expect(screen.getByText(PROFILE_MESSAGES.failed)).toBeTruthy();
-    expect(screen.queryByText('Grace Hopper')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Grace Hopper' })).toBeNull();
   });
 });
 
@@ -131,34 +132,34 @@ describe('admin route', () => {
     renderRouter(APP_DIR, { initialUrl: '/admin' });
 
     await waitFor(() => expect(screen).toHavePathname('/dashboard'));
-    expect(screen.getByText('Grace Hopper')).toBeTruthy();
-    expect(screen.queryByText(ADMIN_HEADING)).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Grace Hopper' })).toBeTruthy();
+    expect(screen.queryByLabelText(ADMIN_SEARCH)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open admin panel' })).toBeNull();
   });
 
   it('lets an admin open /admin directly', async () => {
     signedInAs(allowedEmail, 'admin');
     renderRouter(APP_DIR, { initialUrl: '/admin' });
 
-    await waitFor(() => expect(screen.getByText(ADMIN_HEADING)).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText(ADMIN_SEARCH)).toBeTruthy());
     expect(screen).toHavePathname('/admin');
   });
 
   it('lets an admin reach /admin from the dashboard', async () => {
     signedInAs(allowedEmail, 'admin');
     renderRouter(APP_DIR, { initialUrl: '/dashboard' });
-    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Grace Hopper' })).toBeTruthy());
 
-    fireEvent.press(screen.getByRole('link', { name: 'Admin' }));
+    fireEvent.press(screen.getByRole('link', { name: 'Open admin panel' }));
 
     await waitFor(() => expect(screen).toHavePathname('/admin'));
-    expect(screen.getByText(ADMIN_HEADING)).toBeTruthy();
+    expect(screen.getByLabelText(ADMIN_SEARCH)).toBeTruthy();
   });
 
   it('sends a signed-out visitor from /admin to /login', async () => {
     renderRouter(APP_DIR, { initialUrl: '/admin' });
 
     await waitFor(() => expect(screen).toHavePathname('/login'));
-    expect(screen.queryByText(ADMIN_HEADING)).toBeNull();
+    expect(screen.queryByLabelText(ADMIN_SEARCH)).toBeNull();
   });
 });

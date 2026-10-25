@@ -4,6 +4,7 @@ import { View } from 'react-native';
 
 import { GoogleSignInButton } from '@/components/google-sign-in-button';
 import { LogoMark } from '@/components/logo-mark';
+import { PageFooter } from '@/components/page-footer';
 import {
   Alert,
   Badge,
@@ -99,6 +100,8 @@ export default function LoginScreen() {
           </View>
         </GlassCard>
       </View>
+
+      <PageFooter className="mt-12" />
     </Screen>
   );
 }

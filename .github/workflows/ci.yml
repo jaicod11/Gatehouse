@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Type check, lint, format and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Dummy values. Nothing in CI talks to Supabase: the Jest tests fake the client and the SQL
+      # tests run the migrations on an in-memory Postgres (PGlite). No secrets are needed.
+      EXPO_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-publishable-key
+      EXPO_PUBLIC_ALLOWED_DOMAIN: example.com
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Prettier
+        run: npm run format:check
+
+      - name: Jest
+        run: npm test -- --ci
+
+      - name: SQL tests
+        run: npm run test:sql

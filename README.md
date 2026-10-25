@@ -4,6 +4,16 @@ One Expo codebase for Android, iOS and web. Sign in with Google is limited to a 
 domain, enforced in the app and in Supabase (an auth hook plus row-level security). The dashboard
 is only reachable with an allowed session, and an admin area only with the admin role.
 
+| Route         | Who        | What                                                        |
+| ------------- | ---------- | ----------------------------------------------------------- |
+| `/login`      | Signed out | Continue with Google                                        |
+| `/dashboard`  | Signed in  | Your profile, this session, the access checks you passed    |
+| `/admin`      | Admins     | Everyone who has signed in; make people admins or users     |
+| `/privacy`    | Anyone     | Privacy policy (needed for the Google OAuth consent screen) |
+| anything else | Anyone     | Themed 404 with a way home                                  |
+
+Everything shown is real data from Supabase: there are no placeholder numbers.
+
 **Stack:** Expo SDK 57 · Expo Router (`src/app`) · TypeScript · Supabase Auth (Google, PKCE) ·
 NativeWind v4 (Tailwind CSS v3) · Reanimated 4 · expo-blur · expo-linear-gradient ·
 lucide-react-native · Plus Jakarta Sans · Jest (jest-expo) + React Native Testing Library
@@ -27,21 +37,25 @@ Expo Go on a physical device works with SDK 57.
    - web production: `https://<your-site>/auth/callback`
    - development / production builds: `gatehouse://auth/callback`
    - Expo Go: `exp://<your-LAN-IP>:8081/--/auth/callback` (or a wildcard such as `exp://**`)
+3. Run the database migrations and enable the hook: [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md).
+4. **Google Cloud → OAuth consent screen**: set the privacy policy link to
+   `https://<your-site>/privacy`, and replace `CONTACT_EMAIL` in `src/constants/legal.ts`.
 
 ## Scripts
 
-| Command                | What it does                               |
-| ---------------------- | ------------------------------------------ |
-| `npm start`            | Expo dev server (scan the QR in Expo Go)   |
-| `npm run web`          | Dev server, opens the web build            |
-| `npm run ios/android`  | Dev server, opens a simulator / emulator   |
-| `npm run lint`         | ESLint (expo config + Prettier)            |
-| `npm run lint:fix`     | ESLint with autofix                        |
-| `npm run format`       | Prettier, including Tailwind class sorting |
-| `npm run format:check` | Prettier check without writing             |
-| `npm run typecheck`    | `tsc --noEmit`                             |
-| `npm test`             | Jest test suite                            |
-| `npm run test:watch`   | Jest in watch mode                         |
+| Command                | What it does                                |
+| ---------------------- | ------------------------------------------- |
+| `npm start`            | Expo dev server (scan the QR in Expo Go)    |
+| `npm run web`          | Dev server, opens the web build             |
+| `npm run ios/android`  | Dev server, opens a simulator / emulator    |
+| `npm run lint`         | ESLint (expo config + Prettier)             |
+| `npm run lint:fix`     | ESLint with autofix                         |
+| `npm run format`       | Prettier, including Tailwind class sorting  |
+| `npm run format:check` | Prettier check without writing              |
+| `npm run typecheck`    | `tsc --noEmit`                              |
+| `npm test`             | Jest: app logic, screens and route guards   |
+| `npm run test:watch`   | Jest in watch mode                          |
+| `npm run test:sql`     | SQL tests: migrations on in-memory Postgres |
 
 After changing `tailwind.config.js`, `src/constants/theme.ts` or `.env`, restart with
 `npx expo start -c` to clear Metro's cache.
@@ -117,6 +131,21 @@ which also checks the caller is an admin and refuses to let an admin demote them
 **Database setup:** run the migrations and enable the hook as described in
 [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md).
 
+## Testing
+
+- **`npm test`** (Jest, jest-expo, React Native Testing Library): unit tests for the domain check,
+  OAuth callback handling, date formatting and data access, plus screen tests that render the real
+  `src/app` routes with `expo-router/testing-library` (guards, dashboard, admin panel, privacy and
+  404 pages). Only the Supabase client is faked (`src/test-utils/fake-supabase.ts`); it applies the
+  same rules as the database (RLS, `set_user_role`).
+- **`npm run test:sql`** (`supabase/tests/migrations.test.mjs`): applies the real files in
+  `supabase/migrations/` twice to [PGlite](https://pglite.dev) (Postgres compiled to WebAssembly),
+  on top of `supabase/tests/supabase-stub.sql`, a minimal stand-in for the roles, default grants and
+  `auth` schema of a Supabase project. It checks the domain rules, the hook's responses, the
+  triggers, every RLS policy and grant, and `set_user_role`. No database or network needed.
+- **CI** (`.github/workflows/ci.yml`) runs on every push and pull request: `npm ci`, type check,
+  lint, Prettier, Jest and the SQL tests. It needs no secrets.
+
 ## Project layout
 
 ```
@@ -127,21 +156,27 @@ src/
     auth/callback.tsx    OAuth return URL: loader, then hands over to index
     (auth)/login.tsx     Google sign-in
     (app)/_layout.tsx    signed-in area; guards /admin by role
-    (app)/dashboard.tsx  signed-in user + component preview
-    (app)/admin.tsx      admin area (placeholder)
+    (app)/dashboard.tsx  account, session and access checks; admin card for admins
+    (app)/admin.tsx      admin panel: user list, search, role changes
+    privacy.tsx          public privacy policy
+    +not-found.tsx       themed 404
   components/
     ui/                  design-system primitives (import from '@/components/ui')
-    google-sign-in-button.tsx, google-logo.tsx, full-screen-loader.tsx, logo-mark.tsx
+    dashboard/, admin/   pieces of those two screens
+    page-footer.tsx, google-sign-in-button.tsx, google-logo.tsx, full-screen-loader.tsx, ...
   config/env.ts          typed env access
-  constants/theme.ts     design tokens (single source of truth)
+  constants/             theme.ts (design tokens), legal.ts (CONTACT_EMAIL, policy date)
   context/auth-context.tsx  AuthProvider + useAuth()
-  lib/                   supabase.ts (client), auth.ts (Google flow), profiles.ts,
-                         session storage, OAuth callback parsing
-  utils/domain.ts        isAllowedEmail, ACCESS_DENIED_MESSAGE
+  hooks/                 useNow, useProfileList
+  lib/                   supabase.ts (client), auth.ts (Google flow), profiles.ts (profile
+                         queries and set_user_role), session storage, OAuth callback parsing
+  utils/                 domain check, date formatting, profile search/counts
   test-utils/            fake Supabase client and Jest helpers
   **/__tests__/          Jest tests (*.test.ts / *.test.tsx)
 supabase/migrations/     SQL: allowed domains, auth hook, profiles, RLS and roles
+supabase/tests/          SQL tests (npm run test:sql)
 docs/SUPABASE_SETUP.md   running the migrations and enabling the hook
+.github/workflows/ci.yml CI
 ```
 
 ## Design system
@@ -157,6 +192,9 @@ the same values work as classes and in plain code:
 - Radius: `rounded-control` (16px, buttons), `rounded-card` (24px), plus the `sm` to `3xl` scale
 
 Primitives in `src/components/ui`: `Screen`, `GradientBackground`, `GlassCard`, `Button`,
-`Heading` / `Body` / `Caption` / `Text`, `Badge`, `Avatar` and `Alert`. Pass variants such as `tone`,
+`Heading` / `Body` / `Caption` / `Text`, `Badge`, `Avatar`, `Alert`, `CardHeader`, `SearchField`,
+`ConfirmDialog` (a themed modal, not `window.confirm`), `EmptyState`, `Skeleton` (content
+placeholders, instead of spinners) and `Appear` (staggered entrance; skipped when the OS asks for
+reduced motion). `ToastProvider` / `useToast()` show short success and error messages. Pass variants such as `tone`,
 `size`, `variant` and `weight` as props, and use `className` for layout only. The `cn()` helper
 joins class names but doesn't resolve conflicting utilities.

@@ -35,9 +35,15 @@ Expo SDK 57 + TypeScript, Expo Router (routes in src/app), Supabase Auth with Go
 - Step 1 done: scaffold, design system, placeholder Login/Dashboard.
 - Step 2 done: Supabase client, Google login, domain check, auth context, route guards, tests.
 - Step 3 done: server-side enforcement (allowed_domains, Before User Created hook, profiles + triggers, RLS, is_admin, set_user_role), profile/role in the auth context, role-guarded /admin placeholder.
-- Next: real admin screen content (user list, role changes via set_user_role); dashboard redesign.
+- Step 4 done: real-data dashboard (account, session, access checks, admin card), admin panel (counts, search, role changes with confirm dialog + toasts, skeleton/empty/error states), public /privacy and themed 404, SQL tests in the repo, GitHub Actions CI.
+- Before publishing: fill in CONTACT_EMAIL (src/constants/legal.ts); deploy to Netlify.
 
 ## Testing notes
 
 - SDK 57's `renderRouter` needs `@testing-library/react-native` v13 (v14 made `render` async), pinned with `react-test-renderer@19.2.3`.
-- Tests fake only the Supabase client (`src/test-utils/fake-supabase.ts`); route tests render the real `src/app`. `jest.setup.js` supplies the worklets / Reanimated mocks.
+- Tests fake only the Supabase client (`src/test-utils/fake-supabase.ts`, which mirrors RLS and set_user_role); route tests render the real `src/app`. `jest.setup.js` supplies the worklets / Reanimated mocks.
+- Jest's `testTimeout` is 30s: with a cold cache (always, in CI) the first full-app render in a suite takes over 5s.
+- `npm run test:sql` runs the real migrations on PGlite over `supabase/tests/supabase-stub.sql`. Add a SQL test for every migration change.
+- UI must work on web and native, from 360px to 1440px+. Avoid web-only APIs without a native fallback; no `Intl` for dates (use src/utils/format-date.ts).
+- After adding a route, run `npx expo start` once to regenerate typed routes (.expo/types), or tsc fails locally.
+- Building with different EXPO_PUBLIC_* values needs `npx expo export --clear`: Metro otherwise reuses the old inlined values.

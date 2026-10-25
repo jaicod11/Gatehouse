@@ -35,6 +35,25 @@ const profiles = new Map<string, ProfileRow>();
 const profileRequests: string[] = [];
 let profileGate: Promise<void> = Promise.resolve();
 let profileError: QueryError | null = null;
+let listRequests = 0;
+let listGate: Promise<void> = Promise.resolve();
+let listFailures: QueryError[] = [];
+let rpcFailures: QueryError[] = [];
+let rpcGate: Promise<void> = Promise.resolve();
+
+function queryError(code: string, message: string): QueryError {
+  return { message, details: '', hint: '', code };
+}
+
+/** A network request: resolves on a later task, so React can render in between. */
+function networkDelay() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** The caller's profile, from the stored session (what auth.uid() would be). */
+function callerProfile(): ProfileRow | undefined {
+  return storedSession ? profiles.get(storedSession.user.id) : undefined;
+}
 
 function emit(event: AuthChangeEvent, session: Session | null) {
   emitted.push(event);
@@ -57,30 +76,90 @@ function ensureProfile(session: Session) {
   });
 }
 
-/** Supports the one query the app makes: from(table).select(...).eq('id', id).maybeSingle(). */
+/**
+ * Supports the queries the app makes on profiles: one row with .eq('id', id).maybeSingle(), and
+ * the list, awaited after .order(). Like RLS, the list holds every row for an admin and only
+ * their own row for anyone else.
+ */
 function from(table: string) {
   const filters: Record<string, unknown> = {};
+
+  const runList = async () => {
+    listRequests++;
+    await networkDelay();
+    await listGate;
+    if (table !== 'profiles') {
+      return {
+        data: null,
+        error: queryError('42P01', `relation "public.${table}" does not exist`),
+      };
+    }
+    const failure = listFailures.shift();
+    if (failure) return { data: null, error: failure };
+    const caller = callerProfile();
+    const visible = [...profiles.values()].filter(
+      (row) => caller?.role === 'admin' || row.id === caller?.id,
+    );
+    visible.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    return { data: visible, error: null };
+  };
+
   const query = {
     select: () => query,
     eq: (column: string, value: unknown) => {
       filters[column] = value;
       return query;
     },
+    order: () => query,
     maybeSingle: async () => {
       const id = String(filters.id);
       if (table === 'profiles') profileRequests.push(id);
-      // A network request, so it resolves on a later task, like signOut().
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await networkDelay();
       await profileGate;
       if (table !== 'profiles') {
-        const message = `relation "public.${table}" does not exist`;
-        return { data: null, error: { message, details: '', hint: '', code: '42P01' } };
+        return {
+          data: null,
+          error: queryError('42P01', `relation "public.${table}" does not exist`),
+        };
       }
       if (profileError) return { data: null, error: profileError };
       return { data: profiles.get(id) ?? null, error: null };
     },
+    // Awaiting the builder itself runs the list query, as with postgrest-js.
+    then<T>(onFulfilled: (value: Awaited<ReturnType<typeof runList>>) => T, onRejected?: () => T) {
+      return runList().then(onFulfilled, onRejected);
+    },
   };
   return query;
+}
+
+/** public.set_user_role, with the same checks as the SQL function. */
+async function rpc(name: string, args: Record<string, unknown>) {
+  await networkDelay();
+  await rpcGate;
+  if (name !== 'set_user_role') {
+    return { data: null, error: queryError('PGRST202', `Could not find the function ${name}`) };
+  }
+  const failure = rpcFailures.shift();
+  if (failure) return { data: null, error: failure };
+
+  const target = String(args.target);
+  const role = args.new_role;
+  if (role !== 'admin' && role !== 'user') {
+    return { data: null, error: queryError('22023', "Role must be 'admin' or 'user'.") };
+  }
+  const caller = callerProfile();
+  if (caller?.role !== 'admin') {
+    return { data: null, error: queryError('42501', 'Only admins can change roles.') };
+  }
+  if (target === caller.id && role !== 'admin') {
+    return { data: null, error: queryError('42501', "Admins can't remove their own admin role.") };
+  }
+  const row = profiles.get(target);
+  if (!row) return { data: null, error: queryError('P0002', 'No profile for that user.') };
+  const updated = { ...row, role };
+  profiles.set(target, updated);
+  return { data: updated, error: null };
 }
 
 const auth = {
@@ -109,13 +188,64 @@ const auth = {
   exchangeCodeForSession: jest.fn(),
 };
 
-const client = { auth, from: jest.fn(from) };
+const client = { auth, from: jest.fn(from), rpc: jest.fn(rpc) };
 
 export const supabaseModule = { supabase: client };
 
 export const fakeSupabase = {
   auth,
   from: client.from,
+  rpc: client.rpc,
+  /** Adds another user's profile, as if they had signed up. Returns the row. */
+  addProfile(row: Partial<ProfileRow> & { email: string }): ProfileRow {
+    const id = row.id ?? `user-${nextId++}`;
+    const full: ProfileRow = {
+      full_name: null,
+      avatar_url: null,
+      role: 'user',
+      created_at: new Date(0).toISOString(),
+      last_sign_in_at: null,
+      ...row,
+      id,
+    };
+    profiles.set(id, full);
+    return full;
+  },
+  updateProfile(userId: string, changes: Partial<Omit<ProfileRow, 'id'>>) {
+    const row = profiles.get(userId);
+    if (!row) throw new Error(`No profile for ${userId}`);
+    profiles.set(userId, { ...row, ...changes });
+  },
+  profile(userId: string): ProfileRow | undefined {
+    return profiles.get(userId);
+  },
+  /** Makes the next `count` list requests fail. */
+  failListRequests(count = 1, message = 'TypeError: Network request failed') {
+    listFailures = Array.from({ length: count }, () => queryError('', message));
+  },
+  /** Holds list requests pending until the returned function is called. */
+  holdListRequests(): () => void {
+    let release = () => {};
+    listGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    return release;
+  },
+  listRequestCount(): number {
+    return listRequests;
+  },
+  /** Holds RPC calls pending until the returned function is called. */
+  holdRpc(): () => void {
+    let release = () => {};
+    rpcGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    return release;
+  },
+  /** Makes the next set_user_role call fail with this error. */
+  failNextRpc(code: string, message: string) {
+    rpcFailures = [queryError(code, message)];
+  },
   /** The session getSession() restores, as if left in storage by an earlier visit. */
   setStoredSession(session: Session | null) {
     storedSession = session;
@@ -182,8 +312,14 @@ export const fakeSupabase = {
     profileRequests.length = 0;
     profileGate = Promise.resolve();
     profileError = null;
+    listRequests = 0;
+    listGate = Promise.resolve();
+    listFailures = [];
+    rpcFailures = [];
+    rpcGate = Promise.resolve();
     for (const fn of Object.values(auth)) fn.mockClear();
     client.from.mockClear();
+    client.rpc.mockClear();
   },
 };
 
