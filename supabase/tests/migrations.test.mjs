@@ -441,3 +441,70 @@ describe('a migrated project', () => {
     });
   });
 });
+
+describe('admin bootstrap', () => {
+  let db;
+
+  /** Creates a user the way Supabase Auth does and returns their new profile's role. */
+  async function signUp(email) {
+    const result = await as(
+      db,
+      'supabase_auth_admin',
+      null,
+      `insert into auth.users (email, raw_user_meta_data) values ($1, '{}'::jsonb) returning id`,
+      [email],
+      { commit: true },
+    );
+    assert.ifError(result.error);
+    const { rows } = await db.query(`select role from public.profiles where id = $1`, [
+      result.rows[0].id,
+    ]);
+    return rows[0].role;
+  }
+
+  before(async () => {
+    db = await freshDatabase();
+  });
+
+  after(async () => {
+    await db.close();
+  });
+
+  it('never makes someone from a disallowed domain admin, even with no admin yet', async () => {
+    await db.exec(`insert into public.allowed_domains (domain) values ('${DOMAIN}')`);
+    assert.equal(await signUp('outsider@gmail.com'), 'user');
+  });
+
+  it('makes the first allowed user an admin', async () => {
+    assert.equal(await signUp(`first@${DOMAIN}`), 'admin');
+  });
+
+  it('makes the next allowed user a normal user', async () => {
+    assert.equal(await signUp(`second@${DOMAIN}`), 'user');
+  });
+
+  it('makes the first user of a newly allowed domain admin, even though an old-domain admin exists', async () => {
+    await db.exec(`
+      delete from public.allowed_domains where domain = '${DOMAIN}';
+      insert into public.allowed_domains (domain) values ('new-domain.test');
+    `);
+    const { rows } = await db.query(
+      `select count(*)::int as n from public.profiles where role = 'admin' and email = $1`,
+      [`first@${DOMAIN}`],
+    );
+    assert.equal(rows[0].n, 1, 'the old-domain admin is still there');
+
+    assert.equal(await signUp('first@new-domain.test'), 'admin');
+    assert.equal(await signUp('second@new-domain.test'), 'user');
+  });
+
+  it('keeps current_admin_exists away from clients', async () => {
+    for (const role of ['anon', 'authenticated']) {
+      const { rows } = await db.query(
+        `select has_function_privilege($1, 'public.current_admin_exists()', 'execute') as v`,
+        [role],
+      );
+      assert.equal(rows[0].v, false, role);
+    }
+  });
+});

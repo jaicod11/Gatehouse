@@ -18,8 +18,9 @@ click **Run**:
 3. `20261025100200_profiles.sql`: `profiles` table, its triggers on `auth.users`, and a backfill
    for users who already exist
 4. `20261025100300_profiles_access.sql`: `is_admin()`, RLS policies, grants, `set_user_role()`
+5. `20261025120000_admin_bootstrap.sql`: the first allowed user to sign up becomes admin (step 5)
 
-Each should end with "Success. No rows returned". All four are safe to run again. If the editor
+Each should end with "Success. No rows returned". All five are safe to run again. If the editor
 warns about destructive operations, that's the `drop policy / drop trigger if exists` lines that
 make them re-runnable; confirm.
 
@@ -72,21 +73,30 @@ keeps working until it expires (an hour by default), but RLS still gives them no
 
 ## 5. Make yourself admin
 
-Sign in to the app once with your own account, so your profile exists (migration 3 also backfills
-accounts that already existed). Then:
+**Automatic for new accounts** (migration 5): while there is no current admin, meaning no profile with
+role `admin` whose email is on an allowed domain, the next allowed user to **sign up** becomes admin.
+So sign in yourself first, right after setup, then check:
+
+```sql
+select email, role, created_at, last_sign_in_at from public.profiles order by created_at;
+```
+
+**By hand**, if your profile already existed before migration 5 (for example from earlier testing),
+or if someone else signed up first:
 
 ```sql
 update public.profiles
 set role = 'admin'
 where lower(email) = lower('you@vitapstudent.ac.in');
 
-select email, role, created_at, last_sign_in_at from public.profiles;
+-- If someone else became admin by accident:
+update public.profiles set role = 'user' where lower(email) = lower('them@vitapstudent.ac.in');
 ```
 
 The app reads your role when it loads your session, so reload the page (or restart the app). The
-dashboard then shows an **Admin** badge and button, and `/admin` opens. From then on admins change
-roles with `public.set_user_role(target, new_role)`. An admin can't demote themselves, so at least
-one admin always remains.
+dashboard then shows an **Admin** badge and the **Admin panel** card, and `/admin` opens. From then
+on admins change roles in the admin panel (it calls `public.set_user_role`). An admin can't demote
+themselves, so at least one admin always remains.
 
 ## 6. Manual checks
 

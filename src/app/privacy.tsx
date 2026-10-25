@@ -29,7 +29,8 @@ export default function PrivacyScreen() {
     <Pressable
       role="link"
       onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}`)}
-      className="hover:opacity-80"
+      // min-w-0 + shrink let a long address wrap inside the card instead of running past it.
+      className="min-w-0 shrink hover:opacity-80"
     >
       <Text weight="semibold" tone="accent" className="text-base leading-7">
         {CONTACT_EMAIL}

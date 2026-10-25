@@ -43,3 +43,6 @@ yarn-error.*
 
 # env (secrets and per-machine config; see .env.example)
 .env
+
+# Local Netlify folder
+.netlify

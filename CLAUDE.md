@@ -20,7 +20,7 @@ Expo SDK 57 + TypeScript, Expo Router (routes in src/app), Supabase Auth with Go
 
 - The allowed domain comes ONLY from EXPO_PUBLIC_ALLOWED_DOMAIN (src/config/env.ts); never hardcode it, including in UI copy. It's set to a college domain for local testing and to hbplus.fit for deployment.
 - Domain is enforced in layers: Google's `hd` param (UX hint only), a client-side check that signs the user out immediately, and server-side a Supabase Before User Created hook + row-level security (supabase/migrations; the user runs them by hand, see docs/SUPABASE_SETUP.md). The hook's error carries the marker `DOMAIN_NOT_ALLOWED`, which the client maps to ACCESS_DENIED_MESSAGE; keep the SQL and `src/lib/oauth-callback.ts` in sync.
-- Never connect to the user's database; write SQL as idempotent migrations in supabase/migrations.
+- Never connect to the user's database; write SQL as idempotent migrations in supabase/migrations. Never edit a migration that may already have run; add a new one.
 - Never use or reference the Supabase secret / service_role key in the app. Never log tokens or sessions.
 - UI must look premium: dark theme, design tokens in src/constants/theme.ts, reusable primitives in src/components/ui.
 
@@ -36,7 +36,8 @@ Expo SDK 57 + TypeScript, Expo Router (routes in src/app), Supabase Auth with Go
 - Step 2 done: Supabase client, Google login, domain check, auth context, route guards, tests.
 - Step 3 done: server-side enforcement (allowed_domains, Before User Created hook, profiles + triggers, RLS, is_admin, set_user_role), profile/role in the auth context, role-guarded /admin placeholder.
 - Step 4 done: real-data dashboard (account, session, access checks, admin card), admin panel (counts, search, role changes with confirm dialog + toasts, skeleton/empty/error states), public /privacy and themed 404, SQL tests in the repo, GitHub Actions CI.
-- Before publishing: fill in CONTACT_EMAIL (src/constants/legal.ts); deploy to Netlify.
+- Step 5 done: CONTACT_EMAIL set, disabled buttons look disabled (opacity, no hover, not-allowed cursor), netlify.toml (SPA fallback, security + cache headers), admin bootstrap migration (first allowed sign-up becomes admin while no current admin exists), reviewer README, docs/DEPLOYMENT.md.
+- Next: deploy to Netlify (docs/DEPLOYMENT.md), add docs/screenshots, fill LIVE_URL and OWNER/REPO in the README, test on emulators and write "Running on mobile".
 
 ## Testing notes
 
@@ -47,3 +48,5 @@ Expo SDK 57 + TypeScript, Expo Router (routes in src/app), Supabase Auth with Go
 - UI must work on web and native, from 360px to 1440px+. Avoid web-only APIs without a native fallback; no `Intl` for dates (use src/utils/format-date.ts).
 - After adding a route, run `npx expo start` once to regenerate typed routes (.expo/types), or tsc fails locally.
 - Building with different EXPO_PUBLIC_* values needs `npx expo export --clear`: Metro otherwise reuses the old inlined values.
+- Netlify Dev (`netlify dev --dir dist`) applies netlify.toml redirects and headers locally, but its static server always sends `cache-control: max-age=0`; check caching on the live site.
+- React Native Web overrides `scrollTo` on ScrollView nodes; in browser scripts set `scrollTop` instead. Pages scroll inside that node, not the window, so full-page screenshot tools repeat content.

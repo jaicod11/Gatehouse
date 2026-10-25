@@ -1,8 +1,8 @@
 /**
  * Contact address shown on the privacy page for questions and deletion requests.
- * TODO: replace this placeholder with the real address before publishing the Google OAuth app.
+ * Public: it appears on /privacy, which Google links to from the OAuth consent screen.
  */
-export const CONTACT_EMAIL = 'privacy@example.com';
+export const CONTACT_EMAIL = 'jaideep.23bce9004@vitapstudent.ac.in';
 
 /** When the privacy policy last changed (YYYY-MM-DD). Update it with every change to the text. */
 export const PRIVACY_POLICY_UPDATED = '2026-10-25';

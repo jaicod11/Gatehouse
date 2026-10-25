@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { ComponentType } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -28,19 +29,32 @@ const sizeStyles: Record<ButtonSize, { box: string; label: string; icon: number;
     lg: { box: 'h-14 gap-2.5 px-6', label: 'text-base', icon: 20, radius: radius.control },
   };
 
-const variantStyles: Record<ButtonVariant, { box: string; tone: TextTone; color: string }> = {
-  primary: { box: 'hover:opacity-90', tone: 'primary', color: colors.text.primary },
+// `interactive` holds the hover/press feedback, left off while the button is disabled or loading.
+const variantStyles: Record<
+  ButtonVariant,
+  { box: string; interactive: string; tone: TextTone; color: string }
+> = {
+  primary: {
+    box: '',
+    interactive: 'hover:opacity-90',
+    tone: 'primary',
+    color: colors.text.primary,
+  },
   secondary: {
-    box: 'border border-border-strong bg-white/[0.06] hover:bg-white/10 active:bg-white/[0.12]',
+    box: 'border border-border-strong bg-white/[0.06]',
+    interactive: 'hover:bg-white/10 active:bg-white/[0.12]',
     tone: 'primary',
     color: colors.text.primary,
   },
   ghost: {
-    box: 'hover:bg-white/5 active:bg-white/10',
+    box: '',
+    interactive: 'hover:bg-white/5 active:bg-white/10',
     tone: 'secondary',
     color: colors.text.secondary,
   },
 };
+
+const isWeb = Platform.OS === 'web';
 
 const PRESS_SPRING = { damping: 18, stiffness: 420, mass: 0.6 };
 
@@ -91,7 +105,7 @@ export function Button({
     // A row wrapper sizes the button to its content inside a column parent while still honoring
     // the parent's alignItems, rather than forcing an alignSelf.
     <View
-      className={cn('flex-row', fullWidth && 'self-stretch', disabled && 'opacity-50', className)}
+      className={cn('flex-row', fullWidth && 'self-stretch', disabled && 'opacity-40', className)}
     >
       {/* The radius lives in style (not a class) so the glow and the clipped surface share it. */}
       <Animated.View
@@ -106,6 +120,7 @@ export function Button({
           role="button"
           aria-disabled={inactive}
           aria-busy={loading}
+          accessibilityState={{ disabled: inactive, busy: loading }}
           accessibilityLabel={label}
           disabled={inactive}
           onPressIn={handlePressIn}
@@ -114,6 +129,10 @@ export function Button({
             'flex-row items-center justify-center overflow-hidden',
             sizing.box,
             look.box,
+            !inactive && look.interactive,
+            // Web only: cursors don't exist on native.
+            isWeb &&
+              (disabled ? 'cursor-not-allowed' : loading ? 'cursor-progress' : 'cursor-pointer'),
           )}
           style={{ borderRadius: sizing.radius }}
           {...rest}
