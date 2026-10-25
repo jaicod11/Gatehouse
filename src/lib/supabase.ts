@@ -3,6 +3,9 @@ import { AppState, Platform } from 'react-native';
 
 import { env } from '@/config/env';
 
+// Native: adds crypto.getRandomValues and crypto.subtle.digest (via expo-crypto) so supabase-js
+// can use a secure PKCE verifier and the S256 challenge. Must load before the client is used.
+import './crypto-shim';
 import { sessionStorageAdapter } from './session-storage';
 
 const isWeb = Platform.OS === 'web';
@@ -16,7 +19,7 @@ export const supabase = createClient(env.supabaseUrl, env.supabaseAnonKey, {
     flowType: 'pkce',
     autoRefreshToken: true,
     persistSession: true,
-    // Encrypted SecureStore-backed storage on native; supabase-js's default localStorage on web.
+    // SecureStore (Keychain / Keystore) on native; supabase-js's default localStorage on web.
     storage: sessionStorageAdapter,
     // On web, the client finishes the OAuth redirect itself by exchanging the ?code= that Supabase
     // appends to /auth/callback. Native apps have no page URL, so src/lib/auth.ts does it instead.

@@ -1,4 +1,9 @@
-import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
+import {
+  AuthPKCECodeVerifierMissingError,
+  type AuthChangeEvent,
+  type AuthError,
+  type Session,
+} from '@supabase/supabase-js';
 
 /**
  * In-memory stand-in for the Supabase client, for tests. It mimics the behaviour the app relies on:
@@ -162,6 +167,13 @@ async function rpc(name: string, args: Record<string, unknown>) {
   return { data: updated, error: null };
 }
 
+type ExchangeResult = { data: { session: unknown; user: unknown }; error: AuthError | null };
+
+/** supabase-js's answer when no code verifier is stored: no sign-in is waiting for that code. */
+async function noPendingSignIn(_code: string): Promise<ExchangeResult> {
+  return { data: { session: null, user: null }, error: new AuthPKCECodeVerifierMissingError() };
+}
+
 const auth = {
   getSession: jest.fn(async () => {
     await restoreGate;
@@ -185,7 +197,7 @@ const auth = {
     return { error: null };
   }),
   signInWithOAuth: jest.fn(),
-  exchangeCodeForSession: jest.fn(),
+  exchangeCodeForSession: jest.fn(noPendingSignIn),
 };
 
 const client = { auth, from: jest.fn(from), rpc: jest.fn(rpc) };
@@ -318,6 +330,7 @@ export const fakeSupabase = {
     rpcFailures = [];
     rpcGate = Promise.resolve();
     for (const fn of Object.values(auth)) fn.mockClear();
+    auth.exchangeCodeForSession.mockImplementation(noPendingSignIn);
     client.from.mockClear();
     client.rpc.mockClear();
   },

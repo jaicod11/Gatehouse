@@ -14,6 +14,7 @@ import { Platform } from 'react-native';
 import { env } from '@/config/env';
 import { signInWithGoogle as startGoogleSignIn } from '@/lib/auth';
 import { readWebCallbackError } from '@/lib/oauth-callback';
+import { subscribeToOAuthRedirects } from '@/lib/oauth-redirect';
 import { PROFILE_MESSAGES, fetchProfile, type Profile, type UserRole } from '@/lib/profiles';
 import { supabase } from '@/lib/supabase';
 import { ACCESS_DENIED_MESSAGE, isAllowedEmail } from '@/utils/domain';
@@ -180,6 +181,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  // iOS / Android: a sign-in can also finish outside signInWithGoogle, e.g. when the OS killed the
+  // app while Google's page was open and the callback relaunched it. Show the spinner meanwhile
+  // and the error if it fails; success arrives as a SIGNED_IN event like any other sign-in.
+  useEffect(
+    () =>
+      subscribeToOAuthRedirects((event) => {
+        if (event.phase === 'started') {
+          setIsSigningIn(true);
+          setState((prev) => ({ ...prev, error: null }));
+          return;
+        }
+        // An in-app sign-in (signInWithGoogle) turns its own spinner off when it returns.
+        if (!signingInRef.current) setIsSigningIn(false);
+        const { outcome } = event;
+        if (outcome.type === 'error') setState((prev) => ({ ...prev, error: outcome.message }));
+      }),
+    [],
+  );
 
   // Web: pressing Back on Google's page can restore this page from the back/forward cache with the
   // spinner still showing, because the page never reloaded.

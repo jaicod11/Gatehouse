@@ -9,9 +9,11 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#07080D",
     "ios": {
+      "bundleIdentifier": "com.jaideep.gatehouse",
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.jaideep.gatehouse",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

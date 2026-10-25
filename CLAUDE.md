@@ -37,11 +37,13 @@ Expo SDK 57 + TypeScript, Expo Router (routes in src/app), Supabase Auth with Go
 - Step 3 done: server-side enforcement (allowed_domains, Before User Created hook, profiles + triggers, RLS, is_admin, set_user_role), profile/role in the auth context, role-guarded /admin placeholder.
 - Step 4 done: real-data dashboard (account, session, access checks, admin card), admin panel (counts, search, role changes with confirm dialog + toasts, skeleton/empty/error states), public /privacy and themed 404, SQL tests in the repo, GitHub Actions CI.
 - Step 5 done: CONTACT_EMAIL set, disabled buttons look disabled (opacity, no hover, not-allowed cursor), netlify.toml (SPA fallback, security + cache headers), admin bootstrap migration (first allowed sign-up becomes admin while no current admin exists), reviewer README, docs/DEPLOYMENT.md.
-- Next: deploy to Netlify (docs/DEPLOYMENT.md), add docs/screenshots, fill LIVE_URL and OWNER/REPO in the README, test on emulators and write "Running on mobile".
+- Native fixes done: chunked SecureStore session storage (no custom crypto), expo-crypto shim so PKCE is S256 on Hermes, once-only OAuth callback completion that also covers cold starts (src/lib/oauth-redirect.native.ts), android.package / ios.bundleIdentifier `com.jaideep.gatehouse`, "Running on mobile" in the README. On an Android phone in Expo Go the UI works but sign-in doesn't complete: Expo Go restarts the JS with the bare exp:// URL and loses the callback. A development build is the recommended setup and is untested.
+- Next: deploy to Netlify (docs/DEPLOYMENT.md), fill LIVE_URL and OWNER/REPO in the README, test a development build on Android.
 
 ## Testing notes
 
 - SDK 57's `renderRouter` needs `@testing-library/react-native` v13 (v14 made `render` async), pinned with `react-test-renderer@19.2.3`.
+- Native-only code sits in `.native.ts` files with a `.ts` web counterpart (session-storage, crypto-shim, oauth-redirect). jest-expo runs as iOS, so tests get the `.native` versions.
 - Tests fake only the Supabase client (`src/test-utils/fake-supabase.ts`, which mirrors RLS and set_user_role); route tests render the real `src/app`. `jest.setup.js` supplies the worklets / Reanimated mocks.
 - Jest's `testTimeout` is 30s: with a cold cache (always, in CI) the first full-app render in a suite takes over 5s.
 - `npm run test:sql` runs the real migrations on PGlite over `supabase/tests/supabase-stub.sql`. Add a SQL test for every migration change.

@@ -93,11 +93,11 @@ describe('signInWithGoogle (native)', () => {
   it('exchanges the returned code for a session', async () => {
     openAuthSession.mockResolvedValue({
       type: 'success',
-      url: 'gatehouse://auth/callback?code=the-code',
+      url: 'gatehouse://auth/callback?code=code-1',
     });
 
     await expect(signInWithGoogle()).resolves.toEqual({ type: 'success' });
-    expect(fakeSupabase.auth.exchangeCodeForSession).toHaveBeenCalledWith('the-code');
+    expect(fakeSupabase.auth.exchangeCodeForSession).toHaveBeenCalledWith('code-1');
   });
 
   it.each([WebBrowserResultType.CANCEL, WebBrowserResultType.DISMISS])(
@@ -142,7 +142,7 @@ describe('signInWithGoogle (native)', () => {
   it('reports a network failure during the code exchange', async () => {
     openAuthSession.mockResolvedValue({
       type: 'success',
-      url: 'gatehouse://auth/callback?code=the-code',
+      url: 'gatehouse://auth/callback?code=code-2',
     });
     fakeSupabase.auth.exchangeCodeForSession.mockResolvedValue({
       data: { session: null, user: null },

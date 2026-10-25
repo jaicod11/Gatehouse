@@ -12,11 +12,11 @@ email."_
 
 ## Screenshots
 
-| Login                                      | Access denied                                        | Dashboard                                    |
-| ------------------------------------------ | ---------------------------------------------------- | -------------------------------------------- |
-| ![Login](docs/screenshots/login.png)       | ![Access denied](docs/screenshots/access-denied.png) | ![Dashboard](docs/screenshots/dashboard.png) |
-| **Admin panel**                            | **Mobile**                                           |                                              |
-| ![Admin panel](docs/screenshots/admin.png) | ![Mobile](docs/screenshots/mobile.png)               |                                              |
+| Login                                      | Access denied                                                   | Dashboard                                    |
+| ------------------------------------------ | --------------------------------------------------------------- | -------------------------------------------- |
+| ![Login](docs/screenshots/login.png)       | ![Access denied](docs/screenshots/access-denied.png)            | ![Dashboard](docs/screenshots/dashboard.png) |
+| **Admin panel**                            | **Android (Expo Go): login screen**                             |                                              |
+| ![Admin panel](docs/screenshots/admin.png) | ![Android (Expo Go): login screen](docs/screenshots/mobile.png) |                                              |
 
 ## Features
 
@@ -31,7 +31,7 @@ email."_
 | Loading states                            | Branded loader during the session check, button spinners, skeletons in the admin panel                                                                                      |
 | Error handling                            | Friendly messages for cancel, network, OAuth and hook errors ([`oauth-callback.ts`](src/lib/oauth-callback.ts)); empty and error states with Retry                          |
 | State management                          | One `AuthProvider` ([`auth-context.tsx`](src/context/auth-context.tsx)): status, session, profile, role                                                                     |
-| Token handling                            | [PKCE, encrypted native storage, auto-refresh](#token-handling)                                                                                                             |
+| Token handling                            | [PKCE (S256), OS-encrypted native storage, auto-refresh](#token-handling)                                                                                                   |
 | **Bonus:** roles (Admin / User)           | `profiles.role`, admin panel [`(app)/admin.tsx`](<src/app/(app)/admin.tsx>), `set_user_role` RPC                                                                            |
 | **Bonus:** user data in a database        | `public.profiles`, created by a trigger on sign-up                                                                                                                          |
 | **Bonus:** properly protected routes      | Client guards for UX, and RLS on the server for the data itself                                                                                                             |
@@ -42,7 +42,8 @@ email."_
 - **App:** Expo SDK 57, React Native 0.86, React 19, TypeScript, Expo Router (file-based routes in
   `src/app`), NativeWind 4 (Tailwind), Reanimated 4, expo-blur, lucide icons, Plus Jakarta Sans
 - **Auth and data:** Supabase Auth (Google, PKCE) and Postgres (auth hook, triggers, RLS)
-- **Native storage:** expo-secure-store, expo-crypto (AES-GCM), AsyncStorage
+- **Native storage and crypto:** expo-secure-store (Keychain / Keystore), expo-crypto (SHA-256 and
+  random bytes for PKCE)
 - **Tests:** Jest (jest-expo) with React Native Testing Library; SQL tests on PGlite
 - **Hosting and CI:** Netlify (static single-page web build), GitHub Actions
 
@@ -83,7 +84,11 @@ sequenceDiagram
   `/auth/callback?code=...`, and supabase-js exchanges the code on load (`detectSessionInUrl`).
 - **iOS / Android:** the app gets the Google URL from Supabase, opens it with
   `WebBrowser.openAuthSessionAsync`, reads `code` from the returned `gatehouse://auth/callback` URL
-  and calls `exchangeCodeForSession` itself.
+  and calls `exchangeCodeForSession` itself. If the OS stops the app while Google's page is open,
+  the callback can still finish the sign-in when it reopens the app: it's picked up from the launch
+  URL, a link event or the `/auth/callback` route, and each code is exchanged exactly once
+  ([`oauth-redirect.native.ts`](src/lib/oauth-redirect.native.ts)). That needs the callback to
+  reach the app, which Expo Go doesn't manage (see [Running on mobile](#running-on-mobile)).
 - Until the stored session and the profile are loaded, the app shows only a branded loader: no
   flash of the dashboard or of the login page. Closing Google's sheet is not an error. Network
   and OAuth errors become short messages, and the provider's raw error text is never shown.
@@ -139,11 +144,21 @@ the API directly still gets only their own row.
 
 ## Token handling
 
-- **PKCE** for every sign-in: the authorization code in the redirect is useless without the
-  verifier that only this device holds.
-- **Native:** the session is encrypted with AES-256-GCM (expo-crypto). The key lives in the
-  Keychain / Keystore via SecureStore, the ciphertext in AsyncStorage, since sessions can be too
-  big for SecureStore alone. Tampered or mismatched data is rejected, not trusted.
+- **PKCE with S256** for every sign-in: the authorization code in the redirect is useless without
+  the verifier that only this device holds, and Supabase only ever sees its SHA-256 hash.
+  React Native's engine (Hermes) has no WebCrypto, and without it supabase-js falls back to the
+  `plain` method and a `Math.random` verifier. So on iOS and Android
+  [`crypto-shim.native.ts`](src/lib/crypto-shim.native.ts) adds `crypto.getRandomValues` and
+  `crypto.subtle.digest` (SHA-256) from expo-crypto before the client starts. In development the
+  app logs the method once: `[auth] PKCE code_challenge_method=s256`.
+- **Native:** the session is kept only in SecureStore, which the OS encrypts (the Keychain on iOS,
+  a key held in the Android Keystore on Android). There's no custom crypto. A session is bigger
+  than one SecureStore entry should hold, so
+  [`session-storage.native.ts`](src/lib/session-storage.native.ts) stores it in chunks plus a
+  chunk count. The count is removed before a write and written last, and a missing or incomplete
+  value reads as "no session", so an interrupted write can't produce a corrupt session. Sessions
+  saved by earlier versions (AES-GCM data in AsyncStorage) are deleted, so those users sign in
+  again once.
 - **Web:** supabase-js keeps the session in `localStorage`. **Trade-off:** script running on the
   page (an XSS bug) could read it. Mitigated by having no third-party scripts, React's output
   escaping, one-hour access tokens and refresh-token rotation. HttpOnly cookies would need a
@@ -160,7 +175,8 @@ src/
   app/                 routes: login, dashboard, admin, privacy, auth/callback, 404, layouts
   components/          ui/ (design system), dashboard/, admin/, Google button, loader
   context/             AuthProvider: session, profile, role, sign-in / sign-out
-  lib/                 Supabase client, Google flow, profiles + set_user_role, OAuth callbacks
+  lib/                 Supabase client, Google flow, OAuth callbacks, native session storage,
+                       PKCE crypto shim, profiles + set_user_role
   utils/ hooks/        domain check, date formatting, list helpers, useNow, useProfileList
   config/ constants/   typed env, design tokens, legal constants
 supabase/migrations/   SQL: allowed domains, auth hook, profiles, RLS, roles, admin bootstrap
@@ -177,7 +193,7 @@ Google Cloud OAuth client (web application).
 ```bash
 npm ci
 cp .env.example .env   # fill in the values below
-npm run web            # or: npm start, then i / a for a simulator, or scan the QR in Expo Go
+npm run web            # Android / iOS: see "Running on mobile"
 ```
 
 | Variable                        | Required        | Value                                                                           |
@@ -197,13 +213,13 @@ npm run web            # or: npm start, then i / a for a simulator, or scan the 
 
 ## Testing
 
-| Command                | What it runs                                                                            |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| `npm test`             | Jest: domain check, OAuth handling, auth context, guards, dashboard, admin panel, pages |
-| `npm run test:sql`     | The real migrations on PGlite (in-memory Postgres): hook, RLS, grants, roles, bootstrap |
-| `npm run typecheck`    | TypeScript                                                                              |
-| `npm run lint`         | ESLint (Expo config + Prettier)                                                         |
-| `npm run format:check` | Prettier                                                                                |
+| Command                | What it runs                                                                                                                                       |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm test`             | Jest: domain check, OAuth handling (including cold starts), native session storage, PKCE shim, auth context, guards, dashboard, admin panel, pages |
+| `npm run test:sql`     | The real migrations on PGlite (in-memory Postgres): hook, RLS, grants, roles, bootstrap                                                            |
+| `npm run typecheck`    | TypeScript                                                                                                                                         |
+| `npm run lint`         | ESLint (Expo config + Prettier)                                                                                                                    |
+| `npm run format:check` | Prettier                                                                                                                                           |
 
 - **Jest** renders the real `src/app` routes with `expo-router/testing-library` and fakes only the
   Supabase client ([`fake-supabase.ts`](src/test-utils/fake-supabase.ts)), which applies the same
@@ -218,8 +234,81 @@ npm run web            # or: npm start, then i / a for a simulator, or scan the 
 
 ## Running on mobile
 
-_To be completed after emulator and device testing._ Planned contents: Expo Go vs a development
-build, the redirect URL for each, and Android / iOS specifics.
+### What was tested on a device
+
+On a physical Android phone, in **Expo Go** (SDK 57):
+
+- **Works:** the app runs natively and the UI renders correctly (screenshot above). PKCE uses
+  S256 (the development log shows `code_challenge_method=s256`).
+- **Doesn't work: Google sign-in doesn't complete.** After Google's page, Expo Go restarts the
+  JavaScript with the plain `exp://` project URL and the OAuth callback is lost. This happened on
+  all four attempts.
+
+**Not tested:** a development build (Android or iOS) and iOS in general. The native session
+storage, the PKCE shim and the cold-start callback handling are covered by Jest tests, not by a
+device run.
+
+### Why Expo Go loses the callback
+
+In Expo Go, Gatehouse runs inside Expo Go's own app, so the OAuth callback is an
+`exp://<your-ip>:8081/--/auth/callback?code=...` link that Expo Go receives, not Gatehouse. While
+Google's page is open, Expo Go sits in the background. When the browser hands the callback back,
+Expo Go comes back with the JavaScript restarted from the project URL, without the callback's path
+or code. The restart also loses the `openAuthSessionAsync` call that was waiting for the result.
+The app recovers a callback that reaches its JavaScript (see the
+[authentication flow](#authentication-flow)), but in Expo Go it never arrives.
+
+### Recommended: a development build
+
+A development build is Gatehouse's own app (`com.jaideep.gatehouse`) with the `gatehouse://`
+scheme registered to it, so the callback goes straight to the app. This is the setup to use for
+native sign-in. It hasn't been tested on a device yet.
+
+1. In Supabase, **Authentication → URL Configuration → Redirect URLs** must include
+   `gatehouse://auth/callback`.
+2. Add the development client:
+
+   ```bash
+   npx expo install expo-dev-client
+   ```
+
+   From then on, `npx expo start` opens development builds; use `npx expo start --go` for Expo Go.
+
+3. Build and install it, in one of two ways.
+
+   **On your machine** (no Expo account). Set up Android Studio with the Android SDK and an
+   emulator, or a phone with USB debugging, as in Expo's
+   [environment setup](https://docs.expo.dev/get-started/set-up-your-environment/?platform=android&device=physical&mode=development-build&buildEnv=local),
+   then:
+
+   ```bash
+   npx expo run:android            # installs on the running emulator
+   npx expo run:android --device   # or choose a USB-connected phone
+   ```
+
+   This generates `android/` from `app.json` (git-ignored; never edit it by hand), compiles a
+   debug build, installs it and starts Metro. Afterwards, `npx expo start` and pressing `a` is
+   enough for JavaScript changes. Run `npx expo run:android` again after changing `app.json` or
+   adding a library with native code.
+
+   **In the cloud with EAS** (free Expo account, no Android Studio):
+
+   ```bash
+   npx eas-cli@latest login
+   npx eas-cli@latest build --platform android --profile development
+   ```
+
+   The first run offers to create `eas.json` with a `development` profile and to link the project
+   to your Expo account. When the build finishes, install the APK on the phone from the QR code or
+   link it prints. Then start Metro with `npx expo start` and open the project from the app.
+
+**iOS** works the same way with `npx expo run:ios` (a Mac with Xcode) or
+`--platform ios` on EAS (installing on an iPhone needs a paid Apple Developer account). Not tested.
+
+### Mobile browsers
+
+Phones get the full sign-in through the web build: open the live demo in the phone's browser.
+It's the same web app, laid out for phone widths (checked at phone width in a desktop browser).
 
 ## Known limitations and next steps
 
@@ -237,4 +326,6 @@ build, the redirect URL for each, and Android / iOS specifics.
 - **Deleted users' access tokens** stay valid until they expire (an hour by default), though RLS
   still gives them nothing.
 - **Admin bootstrap** trusts whoever signs up first when there's no admin (see above).
-- **Native** builds haven't been tested on devices yet (see "Running on mobile").
+- **Native sign-in doesn't complete in Expo Go.** On an Android phone, Expo Go loses the OAuth
+  callback. A development build should fix this but hasn't been tested on a device yet; mobile
+  browsers get the full flow through the web build (see [Running on mobile](#running-on-mobile)).

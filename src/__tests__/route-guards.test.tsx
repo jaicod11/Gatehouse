@@ -163,3 +163,53 @@ describe('admin route', () => {
     expect(screen.queryByLabelText(ADMIN_SEARCH)).toBeNull();
   });
 });
+
+describe('cold start from the OAuth callback (the OS killed the app while Google was open)', () => {
+  /** Makes the code exchange succeed and sign Grace in, as supabase-js would. */
+  function exchangeSignsIn() {
+    fakeSupabase.auth.exchangeCodeForSession.mockImplementation(async () => {
+      const session = makeSession(allowedEmail, { full_name: 'Grace Hopper' });
+      fakeSupabase.signIn(session);
+      return { data: { session, user: session.user }, error: null };
+    });
+  }
+
+  it('finishes the sign-in from the launch URL and lands on the dashboard', async () => {
+    exchangeSignsIn();
+    renderRouter(APP_DIR, { initialUrl: '/auth/callback?code=cold-start-1' });
+
+    await waitFor(() => expect(screen).toHavePathname('/dashboard'));
+    expect(screen.getByRole('heading', { name: 'Grace Hopper' })).toBeTruthy();
+    expect(fakeSupabase.auth.exchangeCodeForSession).toHaveBeenCalledTimes(1);
+    expect(fakeSupabase.auth.exchangeCodeForSession).toHaveBeenCalledWith('cold-start-1');
+  });
+
+  it('shows the access-denied message when the domain hook rejected the sign-up', async () => {
+    const description = encodeURIComponent('DOMAIN_NOT_ALLOWED: sign-ups are limited');
+    renderRouter(APP_DIR, {
+      initialUrl: `/auth/callback?error=server_error&error_description=${description}`,
+    });
+
+    await waitFor(() => expect(screen).toHavePathname('/login'));
+    expect(await screen.findByText(ACCESS_DENIED_MESSAGE)).toBeTruthy();
+    expect(fakeSupabase.auth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
+  it('ignores a stale callback when already signed in', async () => {
+    signedInAs(allowedEmail);
+    renderRouter(APP_DIR, { initialUrl: '/auth/callback?code=already-used-1' });
+
+    await waitFor(() => expect(screen).toHavePathname('/dashboard'));
+    expect(fakeSupabase.auth.exchangeCodeForSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the login screen without an error for a stale callback when signed out', async () => {
+    renderRouter(APP_DIR, { initialUrl: '/auth/callback?code=already-used-2' });
+
+    await waitFor(() => expect(screen).toHavePathname('/login'));
+    expect(fakeSupabase.auth.exchangeCodeForSession).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(LOGIN_HEADING)).toBeTruthy();
+    // Every error on the login screen comes in an alert with a Dismiss button.
+    expect(screen.queryByLabelText('Dismiss')).toBeNull();
+  });
+});

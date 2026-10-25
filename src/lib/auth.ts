@@ -4,13 +4,8 @@ import { Platform } from 'react-native';
 
 import { env } from '@/config/env';
 
-import {
-  AUTH_CALLBACK_PATH,
-  SIGN_IN_MESSAGES,
-  describeOAuthError,
-  describeSignInError,
-  parseOAuthCallback,
-} from './oauth-callback';
+import { AUTH_CALLBACK_PATH, SIGN_IN_MESSAGES, describeSignInError } from './oauth-callback';
+import { completeOAuthRedirect } from './oauth-redirect';
 import { supabase } from './supabase';
 
 /** Must match `expo.scheme` in app.json. */
@@ -33,6 +28,21 @@ export type GoogleSignInOptions = {
 };
 
 type GoogleQueryParams = Record<string, string>;
+
+let pkceMethodReported = false;
+
+/**
+ * Development only: says once which PKCE challenge method supabase-js chose ("s256" expected; it
+ * falls back to "plain" without WebCrypto). Reads only the method, never the challenge.
+ */
+function reportPkceMethod(authorizeUrl: string) {
+  if (!__DEV__ || pkceMethodReported || process.env.NODE_ENV === 'test') return;
+  pkceMethodReported = true;
+  const query = authorizeUrl.split('#')[0].split('?')[1] ?? '';
+  const method = new URLSearchParams(query).get('code_challenge_method') ?? 'missing';
+  if (method === 's256') console.log(`[auth] PKCE code_challenge_method=${method}`);
+  else console.warn(`[auth] PKCE code_challenge_method=${method} (expected s256)`);
+}
 
 /**
  * Google OAuth parameters. `hd` only tells Google's account picker which Workspace domain to show.
@@ -91,15 +101,16 @@ async function signInOnNative(queryParams: GoogleQueryParams): Promise<GoogleSig
   });
   if (error) return { type: 'error', message: describeSignInError(error) };
   if (!data.url) return { type: 'error', message: SIGN_IN_MESSAGES.failed };
+  reportPkceMethod(data.url);
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
   if (result.type !== 'success') return { type: 'cancelled' };
 
-  const callback = parseOAuthCallback(result.url);
-  if (callback.error) return { type: 'error', message: describeOAuthError(callback) };
-  if (!callback.code) return { type: 'error', message: SIGN_IN_MESSAGES.failed };
-
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(callback.code);
-  if (exchangeError) return { type: 'error', message: describeSignInError(exchangeError) };
-  return { type: 'success' };
+  // The same once-only completion that handles a callback arriving through Linking or the
+  // /auth/callback route (Android can deliver the same URL to all of them).
+  const outcome = await completeOAuthRedirect(result.url);
+  if (outcome?.type === 'success') return { type: 'success' };
+  if (outcome?.type === 'error') return { type: 'error', message: outcome.message };
+  // Not a callback URL, or no stored code verifier for this sign-in.
+  return { type: 'error', message: SIGN_IN_MESSAGES.failed };
 }

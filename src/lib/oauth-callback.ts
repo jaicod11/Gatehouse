@@ -38,12 +38,33 @@ export function parseOAuthCallback(url: string): OAuthCallbackParams {
   const queryAt = beforeHash.indexOf('?');
   const query = new URLSearchParams(queryAt === -1 ? '' : beforeHash.slice(queryAt + 1));
   const fragment = new URLSearchParams(hashAt === -1 ? '' : url.slice(hashAt + 1));
-  const read = (name: string) => query.get(name) || fragment.get(name) || null;
+  return toCallbackParams((name) => query.get(name) || fragment.get(name) || null);
+}
 
+/** The same, from a route's search params (e.g. expo-router's useLocalSearchParams). */
+export function callbackFromSearchParams(
+  params: Record<string, string | string[] | undefined>,
+): OAuthCallbackParams {
+  return toCallbackParams((name) => {
+    const value = params[name];
+    return (Array.isArray(value) ? value[0] : value) || null;
+  });
+}
+
+function toCallbackParams(read: (name: string) => string | null): OAuthCallbackParams {
   const errorCode = read('error_code');
   const errorDescription = read('error_description');
   const error = read('error') ?? errorCode ?? (errorDescription ? 'unknown' : null);
   return { code: read('code'), error, errorCode, errorDescription };
+}
+
+/**
+ * Whether a URL points at the OAuth callback route, whatever the scheme: gatehouse://auth/callback,
+ * exp://<host>/--/auth/callback or https://<site>/auth/callback.
+ */
+export function isAuthCallbackUrl(url: string): boolean {
+  const path = url.split(/[?#]/)[0].replace(/\/+$/, '');
+  return new RegExp(`(^|[/:])${AUTH_CALLBACK_PATH.replace('/', '\\/')}$`).test(path);
 }
 
 /**
