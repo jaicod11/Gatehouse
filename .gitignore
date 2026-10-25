@@ -46,3 +46,7 @@ yarn-error.*
 
 # Local Netlify folder
 .netlify
+
+# AI assistant files
+CLAUDE.md
+.claude/
