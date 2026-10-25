@@ -136,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let redirecting = false;
     try {
-      const result = await startGoogleSignIn(env.allowedDomain);
+      const result = await startGoogleSignIn();
       redirecting = result.type === 'redirecting';
       if (result.type === 'error') {
         setState((prev) => ({ ...prev, error: result.message }));

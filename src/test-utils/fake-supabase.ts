@@ -15,8 +15,10 @@ type Listener = (event: AuthChangeEvent, session: Session | null) => void | Prom
 let storedSession: Session | null = null;
 let restoreGate: Promise<void> = Promise.resolve();
 const listeners = new Set<Listener>();
+const emitted: AuthChangeEvent[] = [];
 
 function emit(event: AuthChangeEvent, session: Session | null) {
+  emitted.push(event);
   for (const listener of [...listeners]) void listener(event, session);
 }
 
@@ -67,10 +69,19 @@ export const fakeSupabase = {
     storedSession = session;
     emit('SIGNED_IN', session);
   },
+  /**
+   * Events emitted so far (INITIAL_SESSION aside). signOut() emits SIGNED_OUT a task later, so
+   * `await waitFor(() => expect(fakeSupabase.emittedEvents()).toContain('SIGNED_OUT'))` both checks
+   * it happened and keeps the resulting state update inside act().
+   */
+  emittedEvents(): AuthChangeEvent[] {
+    return [...emitted];
+  },
   reset() {
     storedSession = null;
     restoreGate = Promise.resolve();
     listeners.clear();
+    emitted.length = 0;
     for (const fn of Object.values(auth)) fn.mockClear();
   },
 };

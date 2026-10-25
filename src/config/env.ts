@@ -21,6 +21,7 @@ const raw = {
   EXPO_PUBLIC_SUPABASE_URL: read(process.env.EXPO_PUBLIC_SUPABASE_URL),
   EXPO_PUBLIC_SUPABASE_ANON_KEY: read(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY),
   EXPO_PUBLIC_ALLOWED_DOMAIN: read(process.env.EXPO_PUBLIC_ALLOWED_DOMAIN),
+  EXPO_PUBLIC_GOOGLE_HD_HINT: read(process.env.EXPO_PUBLIC_GOOGLE_HD_HINT),
 };
 
 type RequiredVar = 'EXPO_PUBLIC_SUPABASE_URL' | 'EXPO_PUBLIC_SUPABASE_ANON_KEY';
@@ -61,6 +62,13 @@ export const env = {
    * hbplus.fit. The client check is for UX only; the backend has to enforce it too.
    */
   allowedDomain: parseAllowedDomain(raw.EXPO_PUBLIC_ALLOWED_DOMAIN),
+
+  /**
+   * Whether to send Google's `hd` hint, which narrows the account picker to `allowedDomain`. On
+   * unless EXPO_PUBLIC_GOOGLE_HD_HINT is exactly "false", a switch that only exists to try the
+   * rejection path by hand. It's a UX hint rather than security, but keep it on in production.
+   */
+  googleHdHint: raw.EXPO_PUBLIC_GOOGLE_HD_HINT !== 'false',
 
   /** Throws an EnvError when unset, so only read it where Supabase is actually used. */
   get supabaseUrl(): string {

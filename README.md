@@ -53,6 +53,7 @@ After changing `tailwind.config.js`, `src/constants/theme.ts` or `.env`, restart
 | `EXPO_PUBLIC_SUPABASE_URL`      | Yes             | `https://<project>.supabase.co`                  |
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes             | Publishable key (`sb_publishable_…`) or anon key |
 | `EXPO_PUBLIC_ALLOWED_DOMAIN`    | No (hbplus.fit) | Domain allowed to sign in, without the @         |
+| `EXPO_PUBLIC_GOOGLE_HD_HINT`    | No (on)         | `false` drops Google's `hd` hint; testing only   |
 
 Read them through `src/config/env.ts`, never from `process.env` directly. `EXPO_PUBLIC_*` values
 are bundled into the app, so they must not contain secrets: never use the Supabase secret /
@@ -76,8 +77,9 @@ service_role key. The backend must enforce the domain restriction as well.
 
 **Domain restriction**, in layers:
 
-1. Google's `hd` parameter pre-filters the account picker. A UX hint only: it can be removed from
-   the URL.
+1. Google's `hd` parameter pre-filters the account picker to the allowed domain. It is a UX hint,
+   not a security control: anyone can strip it from the sign-in URL or pick "Use another account",
+   so nothing relies on it. Enforcement is the client check (2) plus the server-side hook (3).
 2. `src/context/auth-context.tsx` checks every session that appears (restored or new) with
    `isAllowedEmail` (`src/utils/domain.ts`): the part after the single `@` must exactly equal the
    allowed domain, so `mail.<domain>`, `x<domain>` and `<domain>.evil.com` are rejected. A failing
@@ -85,6 +87,11 @@ service_role key. The backend must enforce the domain restriction as well.
    shows "Access restricted. Please login using your official domain email."
 3. Server side (next step): a Supabase auth hook and row-level security, since client checks can
    be bypassed.
+
+`EXPO_PUBLIC_GOOGLE_HD_HINT=false` exists to demonstrate this. It drops `hd` (keeping
+`prompt=select_account`), so Google's account picker offers any account; restart with
+`npx expo start -c`, sign in with an account from another domain, and the app still rejects it
+with the access-denied message. Leave it unset (on) in production.
 
 **Route protection:** the root layout (`src/app/_layout.tsx`) wraps `(app)` and `(auth)` in
 `Stack.Protected` guards and renders a branded loader until the stored session has been checked.

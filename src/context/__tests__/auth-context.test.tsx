@@ -68,9 +68,10 @@ describe('AuthProvider', () => {
     fakeSupabase.setStoredSession(makeSession('mallory@gmail.com'));
     const auth = renderAuth();
 
-    await waitFor(() => expect(fakeSupabase.auth.signOut).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(auth.current().status).toBe('unauthenticated'));
+    await waitFor(() => expect(fakeSupabase.emittedEvents()).toContain('SIGNED_OUT'));
 
+    expect(fakeSupabase.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.current().status).toBe('unauthenticated');
     expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE);
     expect(auth.current().session).toBeNull();
     expect(auth.current().user).toBeNull();
@@ -85,9 +86,10 @@ describe('AuthProvider', () => {
       fakeSupabase.signIn(makeSession(`mallory@mail.${env.allowedDomain}`));
     });
 
-    await waitFor(() => expect(fakeSupabase.auth.signOut).toHaveBeenCalledTimes(1));
-    // signOut() emitted SIGNED_OUT; the access-denied message must survive it.
-    await waitFor(() => expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE));
+    // The access-denied message must survive the SIGNED_OUT that the rejection triggers.
+    await waitFor(() => expect(fakeSupabase.emittedEvents()).toContain('SIGNED_OUT'));
+    expect(fakeSupabase.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE);
     expect(auth.current().status).toBe('unauthenticated');
     expect(auth.current().user).toBeNull();
     expect(auth.statuses()).not.toContain('authenticated');
@@ -122,7 +124,8 @@ describe('AuthProvider', () => {
   it('signOut clears an access-denied error', async () => {
     fakeSupabase.setStoredSession(makeSession('mallory@gmail.com'));
     const auth = renderAuth();
-    await waitFor(() => expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE));
+    await waitFor(() => expect(fakeSupabase.emittedEvents()).toContain('SIGNED_OUT'));
+    expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE);
 
     await act(() => auth.current().signOut());
 
@@ -133,7 +136,8 @@ describe('AuthProvider', () => {
   it('clearError removes the message', async () => {
     fakeSupabase.setStoredSession(makeSession('mallory@gmail.com'));
     const auth = renderAuth();
-    await waitFor(() => expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE));
+    await waitFor(() => expect(fakeSupabase.emittedEvents()).toContain('SIGNED_OUT'));
+    expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE);
 
     act(() => auth.current().clearError());
 

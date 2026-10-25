@@ -65,8 +65,9 @@ describe('route guards', () => {
     renderRouter(APP_DIR, { initialUrl: '/dashboard' });
 
     await waitFor(() => expect(screen).toHavePathname('/login'));
-    expect(await screen.findByText(ACCESS_DENIED_MESSAGE)).toBeTruthy();
-    expect(fakeSupabase.auth.signOut).toHaveBeenCalled();
+    await waitFor(() => expect(fakeSupabase.emittedEvents()).toContain('SIGNED_OUT'));
+    expect(screen.getByText(ACCESS_DENIED_MESSAGE)).toBeTruthy();
+    expect(fakeSupabase.auth.signOut).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Grace Hopper')).toBeNull();
   });
 

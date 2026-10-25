@@ -2,6 +2,8 @@ import { makeRedirectUri } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 
+import { env } from '@/config/env';
+
 import {
   AUTH_CALLBACK_PATH,
   SIGN_IN_MESSAGES,
@@ -23,44 +25,58 @@ export type GoogleSignInResult =
   | { type: 'cancelled' }
   | { type: 'error'; message: string };
 
+export type GoogleSignInOptions = {
+  /** Defaults to env.allowedDomain. */
+  allowedDomain?: string;
+  /** Send Google's `hd` account-picker hint. Defaults to env.googleHdHint. */
+  hdHint?: boolean;
+};
+
+type GoogleQueryParams = Record<string, string>;
+
 /**
  * Google OAuth parameters. `hd` only tells Google's account picker which Workspace domain to show.
- * It is a UX hint, NOT security: anyone can strip it from the URL or pick another account. Access
- * is enforced by isAllowedEmail in the auth context, and must be enforced by Supabase as well.
+ * It is a UX hint, NOT security: anyone can strip it from the URL or pick another account, which is
+ * what turning it off (EXPO_PUBLIC_GOOGLE_HD_HINT=false) demonstrates. Access is enforced by
+ * isAllowedEmail in the auth context, and must be enforced by Supabase as well.
  */
-function googleQueryParams(allowedDomain: string) {
-  return { hd: allowedDomain, prompt: 'select_account' };
+function googleQueryParams(allowedDomain: string, hdHint: boolean): GoogleQueryParams {
+  return hdHint ? { hd: allowedDomain, prompt: 'select_account' } : { prompt: 'select_account' };
 }
 
 /**
  * Starts Google sign-in through Supabase (PKCE). Never throws: failures come back as a friendly
  * message. The resulting session reaches the app through supabase.auth.onAuthStateChange.
  */
-export async function signInWithGoogle(allowedDomain: string): Promise<GoogleSignInResult> {
+export async function signInWithGoogle({
+  allowedDomain = env.allowedDomain,
+  hdHint = env.googleHdHint,
+}: GoogleSignInOptions = {}): Promise<GoogleSignInResult> {
+  const queryParams = googleQueryParams(allowedDomain, hdHint);
   try {
     return Platform.OS === 'web'
-      ? await signInOnWeb(allowedDomain)
-      : await signInOnNative(allowedDomain);
+      ? await signInOnWeb(queryParams)
+      : await signInOnNative(queryParams);
   } catch (error) {
     return { type: 'error', message: describeSignInError(error) };
   }
 }
 
-async function signInOnWeb(allowedDomain: string): Promise<GoogleSignInResult> {
+async function signInOnWeb(queryParams: GoogleQueryParams): Promise<GoogleSignInResult> {
   // supabase-js navigates the page to Google. On return, it exchanges the ?code= on /auth/callback
   // (detectSessionInUrl).
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: `${window.location.origin}/${AUTH_CALLBACK_PATH}`,
-      queryParams: googleQueryParams(allowedDomain),
+      queryParams,
     },
   });
   if (error) return { type: 'error', message: describeSignInError(error) };
   return { type: 'redirecting' };
 }
 
-async function signInOnNative(allowedDomain: string): Promise<GoogleSignInResult> {
+async function signInOnNative(queryParams: GoogleQueryParams): Promise<GoogleSignInResult> {
   // gatehouse://auth/callback in a development or production build, exp://.../--/auth/callback in
   // Expo Go. Whichever it is must be listed under Supabase Auth > URL Configuration > Redirect URLs.
   const redirectTo = makeRedirectUri({ scheme: APP_SCHEME, path: AUTH_CALLBACK_PATH });
@@ -70,7 +86,7 @@ async function signInOnNative(allowedDomain: string): Promise<GoogleSignInResult
     options: {
       redirectTo,
       skipBrowserRedirect: true,
-      queryParams: googleQueryParams(allowedDomain),
+      queryParams,
     },
   });
   if (error) return { type: 'error', message: describeSignInError(error) };
