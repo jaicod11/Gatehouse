@@ -14,8 +14,8 @@ git remote add origin https://github.com/<you>/<repo>.git
 git push -u origin main
 ```
 
-Then replace `OWNER/REPO` in the README's CI badge, and check that the **CI** workflow passes in
-the repository's Actions tab.
+Then check that the README's CI badge points to the repository (`jaicod11/Gatehouse`) and that
+the **CI** workflow passes in the repository's Actions tab.
 
 ## 2. Create the Netlify site
 
@@ -30,8 +30,11 @@ the repository's Actions tab.
    | `EXPO_PUBLIC_SUPABASE_URL`      | `https://<project>.supabase.co`            |
    | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | the publishable key (`sb_publishable_...`) |
    | `EXPO_PUBLIC_ALLOWED_DOMAIN`    | `vitapstudent.ac.in` for now (see step 6)  |
+   | `EXPO_PUBLIC_GOOGLE_HD_HINT`    | `false`                                    |
 
-   Don't set `EXPO_PUBLIC_GOOGLE_HD_HINT` (it stays on). Never add the secret / `service_role` key.
+   `EXPO_PUBLIC_GOOGLE_HD_HINT=false` turns off Google's `hd` hint so reviewers can pick an account
+   from another domain and see the rejection; with the hint on, Google may lock the account picker
+   to the allowed domain. Never add the secret / `service_role` key.
    These values are baked into the bundle at build time, so changing one needs a new deploy.
 
 4. Deploy. To get a nicer URL, rename the project (**Project configuration → Change project

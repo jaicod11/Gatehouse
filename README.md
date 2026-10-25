@@ -3,12 +3,28 @@
 Sign in with Google, restricted to one company email domain, in a single Expo app for Android, iOS
 and the web.
 
-[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+[![CI](https://github.com/jaicod11/Gatehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/jaicod11/Gatehouse/actions/workflows/ci.yml)
 
-**Live demo:** [LIVE_URL](LIVE_URL). It accepts **@vitapstudent.ac.in** accounts while it's being
-reviewed, then moves to **@hbplus.fit** ([domain switch](docs/DEPLOYMENT.md#6-switch-the-allowed-domain)).
-Any other Google account sees: _"Access restricted. Please login using your official domain
-email."_
+**Live demo:** [https://gatehouse-jaideep.netlify.app](https://gatehouse-jaideep.netlify.app). It
+allows **@hbplus.fit** accounts, as in the brief. It was developed and tested with
+**@vitapstudent.ac.in** through the same environment variable and SQL switch
+([domain switch](docs/DEPLOYMENT.md#6-switch-the-allowed-domain)). Any other Google account sees:
+_"Access restricted. Please login using your official domain email."_
+
+## For reviewers
+
+A one-minute test on the live demo:
+
+1. Open [`/dashboard`](https://gatehouse-jaideep.netlify.app/dashboard) while signed out: you're
+   redirected to `/login`.
+2. Sign in with an @hbplus.fit account: you land on the dashboard. The first @hbplus.fit account
+   to sign in becomes admin and sees the admin panel
+   ([admin bootstrap](#roles-and-data-security)).
+3. Sign out, then sign in with any Gmail account: you see _"Access restricted. Please login using
+   your official domain email."_ No account is created: the server-side hook blocks it.
+4. Refresh while signed in: you stay signed in.
+5. On a phone, the same link works in the mobile browser. The native app runs from the same
+   codebase (see [Running on mobile](#running-on-mobile)).
 
 ## Screenshots
 
@@ -98,7 +114,10 @@ sequenceDiagram
 Three layers, each with its own job. Only the last two are enforcement.
 
 1. **Google's `hd` hint** pre-filters the account picker to the allowed domain. It's a UX hint:
-   anyone can strip it from the URL or pick "Use another account".
+   anyone can strip it from the URL or pick "Use another account". **The live demo runs with it
+   off** (`EXPO_PUBLIC_GOOGLE_HD_HINT=false`) so reviewers can try accounts from other domains:
+   with the hint on, Google may lock the account picker to @hbplus.fit, and the rejection flow
+   couldn't be tried.
 2. **Client check** ([`isAllowedEmail`](src/utils/domain.ts)): the part after the single `@` must
    exactly equal `EXPO_PUBLIC_ALLOWED_DOMAIN`, so `mail.<domain>`, `x<domain>` and
    `<domain>.evil.com` are rejected. Every session that appears, restored or new, is checked; a
@@ -117,8 +136,9 @@ changed, and the Supabase API is public (the publishable key ships in every clie
 server layers, a Google account from any domain could get a Supabase session by calling the API
 directly, and read data with it. The client check is about UX: an immediate, clear message.
 
-To see the server layers work, set `EXPO_PUBLIC_GOOGLE_HD_HINT=false`, so Google offers every
-account, and sign in with a personal Gmail account: it's still rejected.
+To see the server layers work, sign in with a personal Gmail account: it's still rejected. The
+live demo already has the hint off; locally, set `EXPO_PUBLIC_GOOGLE_HD_HINT=false` first so
+Google offers every account.
 
 ## Roles and data security
 
@@ -196,12 +216,12 @@ cp .env.example .env   # fill in the values below
 npm run web            # Android / iOS: see "Running on mobile"
 ```
 
-| Variable                        | Required        | Value                                                                           |
-| ------------------------------- | --------------- | ------------------------------------------------------------------------------- |
-| `EXPO_PUBLIC_SUPABASE_URL`      | Yes             | `https://<project>.supabase.co`                                                 |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes             | Publishable key (`sb_publishable_...`) or legacy anon key, never the secret key |
-| `EXPO_PUBLIC_ALLOWED_DOMAIN`    | No (hbplus.fit) | The one allowed domain, without `@`. Must match `allowed_domains`               |
-| `EXPO_PUBLIC_GOOGLE_HD_HINT`    | No (on)         | `false` drops Google's `hd` hint, to test the rejection flow only               |
+| Variable                        | Required        | Value                                                                                    |
+| ------------------------------- | --------------- | ---------------------------------------------------------------------------------------- |
+| `EXPO_PUBLIC_SUPABASE_URL`      | Yes             | `https://<project>.supabase.co`                                                          |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes             | Publishable key (`sb_publishable_...`) or legacy anon key, never the secret key          |
+| `EXPO_PUBLIC_ALLOWED_DOMAIN`    | No (hbplus.fit) | The one allowed domain, without `@`. Must match `allowed_domains`                        |
+| `EXPO_PUBLIC_GOOGLE_HD_HINT`    | No (on)         | `false` drops Google's `hd` hint so any account can be tried. The live demo uses `false` |
 
 `EXPO_PUBLIC_*` values are bundled into the app, so they must not be secrets. Restart with
 `npx expo start -c` after changing them.
@@ -228,8 +248,9 @@ npm run web            # Android / iOS: see "Running on mobile"
   Supabase project's roles, grants and `auth` schema. No database or network needed.
 - **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs install, type check, lint,
   Prettier, Jest and the SQL tests on every push and pull request. It needs no secrets.
-- **Manual rejection test:** set `EXPO_PUBLIC_GOOGLE_HD_HINT=false`, restart with
-  `npx expo start -c`, sign in with a Gmail account: you get the access-denied message, and
+- **Manual rejection test:** on the live demo (the hint is already off there), or locally after
+  setting `EXPO_PUBLIC_GOOGLE_HD_HINT=false` and restarting with `npx expo start -c`, sign in with
+  a Gmail account: you get the access-denied message, and
   `select count(*) from auth.users where email = '...'` in Supabase returns 0.
 
 ## Running on mobile
