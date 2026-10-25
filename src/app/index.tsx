@@ -1,6 +1,11 @@
 import { Redirect } from 'expo-router';
 
-// Temporary: once auth lands, this routes to /dashboard or /login based on the session.
+import { FullScreenLoader } from '@/components/full-screen-loader';
+import { useAuth } from '@/context/auth-context';
+
+// Entry point, and where the guards in the root layout send blocked URLs.
 export default function Index() {
-  return <Redirect href="/login" />;
+  const { status } = useAuth();
+  if (status === 'loading') return <FullScreenLoader />;
+  return <Redirect href={status === 'authenticated' ? '/dashboard' : '/login'} />;
 }

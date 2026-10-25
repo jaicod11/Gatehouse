@@ -1,4 +1,3 @@
-import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import {
   Activity,
@@ -10,7 +9,7 @@ import {
   Sparkles,
   Users,
 } from 'lucide-react-native';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import {
@@ -29,14 +28,9 @@ import {
 } from '@/components/ui';
 import { env } from '@/config/env';
 import { colors } from '@/constants/theme';
+import { useAuth } from '@/context/auth-context';
 
-// Placeholder data so the layout can be checked before the real user and metrics exist.
-const PREVIEW_USER = {
-  name: 'Alex Rivera',
-  email: `alex.rivera@${env.allowedDomain}`,
-  role: 'Admin',
-};
-
+// Placeholder metrics so the layout can be checked before real data exists.
 type Stat = { label: string; value: string; note: string; tone: BadgeTone; icon: IconComponent };
 
 const STATS: Stat[] = [
@@ -59,7 +53,21 @@ const SWATCHES: { name: string; value: string }[] = [
 ];
 
 export default function DashboardScreen() {
-  const router = useRouter();
+  const { user, signOut } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
+
+  // Null only for the moment between signing out and the guard leaving this screen.
+  if (!user) return null;
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      // The route guard sends the user to /login once the session is gone.
+      await signOut();
+    } finally {
+      setSigningOut(false);
+    }
+  };
 
   return (
     <Screen background={<GradientBackground />} scroll className="px-4 py-6 md:px-8 md:py-10">
@@ -70,24 +78,22 @@ export default function DashboardScreen() {
       <View className="w-full max-w-[1120px] gap-6 self-center md:gap-8">
         <View className="gap-5 md:flex-row md:items-center md:justify-between">
           <View className="flex-row items-center gap-4 md:flex-1">
-            <Avatar size="lg" name={PREVIEW_USER.name} ring />
+            <Avatar size="lg" uri={user.avatarUrl} name={user.fullName ?? user.email} ring />
             <View className="flex-1 gap-1">
-              <Caption variant="overline">Dashboard</Caption>
-              <Heading level={2}>Welcome back, Alex</Heading>
-              <View className="flex-row flex-wrap items-center gap-2">
-                <Body size="sm" tone="secondary">
-                  {PREVIEW_USER.email}
-                </Body>
-                <Badge tone="accent" dot label={PREVIEW_USER.role} />
-              </View>
+              <Caption variant="overline">Welcome back</Caption>
+              <Heading level={2}>{user.fullName ?? user.email}</Heading>
+              <Body size="sm" tone="secondary">
+                {user.email}
+              </Body>
             </View>
           </View>
           <Button
             variant="secondary"
             size="sm"
-            label="Sign out"
+            label={signingOut ? 'Signing out…' : 'Sign out'}
             leftIcon={LogOut}
-            onPress={() => router.replace('/login')}
+            loading={signingOut}
+            onPress={handleSignOut}
           />
         </View>
 
@@ -150,10 +156,8 @@ export default function DashboardScreen() {
 
               <Section title="Avatars">
                 <Row>
-                  <Avatar size="xl" uri="https://picsum.photos/seed/gatehouse/240" name="Photo" />
                   <Avatar size="lg" name="Alex Rivera" />
                   <Avatar size="md" name={`sam.okafor@${env.allowedDomain}`} />
-                  <Avatar size="md" uri="https://invalid.example/missing.png" name="Broken Image" />
                   <Avatar size="sm" />
                 </Row>
               </Section>

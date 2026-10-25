@@ -1,15 +1,13 @@
-import { useRouter } from 'expo-router';
 import Head from 'expo-router/head';
-import { LayoutDashboard, LogIn, ShieldCheck, Smartphone, Zap } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { ShieldCheck, Smartphone, Zap } from 'lucide-react-native';
 import { View } from 'react-native';
 
+import { GoogleSignInButton } from '@/components/google-sign-in-button';
 import { LogoMark } from '@/components/logo-mark';
 import {
+  Alert,
   Badge,
   Body,
-  Button,
-  Caption,
   GlassCard,
   GradientBackground,
   Heading,
@@ -19,6 +17,7 @@ import {
 } from '@/components/ui';
 import { env } from '@/config/env';
 import { colors } from '@/constants/theme';
+import { useAuth } from '@/context/auth-context';
 
 const FEATURES: { icon: IconComponent; title: string; body: string }[] = [
   {
@@ -38,17 +37,8 @@ const FEATURES: { icon: IconComponent; title: string; body: string }[] = [
   },
 ];
 
-// Placeholder screen for checking the design system. Google sign-in arrives in a later step.
 export default function LoginScreen() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
-
-  // Demo only: show the button's loading state for a moment.
-  useEffect(() => {
-    if (!loading) return;
-    const timer = setTimeout(() => setLoading(false), 1600);
-    return () => clearTimeout(timer);
-  }, [loading]);
+  const { signInWithGoogle, isSigningIn, error, clearError } = useAuth();
 
   return (
     <Screen
@@ -99,37 +89,16 @@ export default function LoginScreen() {
             Use your {env.allowedDomain} Google account to continue.
           </Body>
 
-          <Button
-            className="mt-8"
-            fullWidth
-            size="lg"
-            label="Continue with Google"
-            leftIcon={LogIn}
-            loading={loading}
-            onPress={() => setLoading(true)}
-          />
-
-          <View className="mt-4 flex-row justify-center">
-            <Badge icon={ShieldCheck} label={`@${env.allowedDomain} accounts only`} />
+          <View className="mt-8 gap-4">
+            {error ? <Alert key={error} message={error} onDismiss={clearError} /> : null}
+            <GoogleSignInButton loading={isSigningIn} onPress={signInWithGoogle} />
           </View>
 
-          <View className="my-6 h-px bg-border" />
-
-          <View className="flex-row justify-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              label="Preview the dashboard"
-              leftIcon={LayoutDashboard}
-              onPress={() => router.push('/dashboard')}
-            />
+          <View className="mt-5 flex-row justify-center">
+            <Badge icon={ShieldCheck} label={`@${env.allowedDomain} accounts only`} />
           </View>
         </GlassCard>
       </View>
-
-      <Caption className="mt-12 text-center">
-        Placeholder build · sign-in isn&apos;t connected yet
-      </Caption>
     </Screen>
   );
 }

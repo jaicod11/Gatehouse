@@ -1,0 +1,156 @@
+import { act, render, waitFor } from '@testing-library/react-native';
+
+import { env } from '@/config/env';
+import { AuthProvider, useAuth, type AuthContextValue } from '@/context/auth-context';
+import { fakeSupabase, makeSession } from '@/test-utils/fake-supabase';
+import { ACCESS_DENIED_MESSAGE } from '@/utils/domain';
+
+// Only the Supabase client is faked. The context, the domain check and env run for real.
+jest.mock('@/lib/supabase', () => jest.requireActual('@/test-utils/fake-supabase').supabaseModule);
+
+const allowedEmail = `ada.lovelace@${env.allowedDomain}`;
+
+/** Renders the provider and records the context value of every render. */
+function renderAuth() {
+  const renders: AuthContextValue[] = [];
+  function Probe() {
+    renders.push(useAuth());
+    return null;
+  }
+  render(
+    <AuthProvider>
+      <Probe />
+    </AuthProvider>,
+  );
+  return {
+    current: () => renders[renders.length - 1],
+    statuses: () => renders.map((value) => value.status),
+  };
+}
+
+beforeEach(() => {
+  fakeSupabase.reset();
+});
+
+describe('AuthProvider', () => {
+  it('starts loading, then authenticates a restored session on the allowed domain', async () => {
+    fakeSupabase.setStoredSession(
+      makeSession(allowedEmail, {
+        full_name: 'Ada Lovelace',
+        avatar_url: 'https://example.com/ada.png',
+      }),
+    );
+    const auth = renderAuth();
+
+    expect(auth.statuses()[0]).toBe('loading');
+    await waitFor(() => expect(auth.current().status).toBe('authenticated'));
+
+    expect(auth.current().user).toEqual({
+      id: expect.any(String),
+      email: allowedEmail,
+      fullName: 'Ada Lovelace',
+      avatarUrl: 'https://example.com/ada.png',
+    });
+    expect(auth.current().session?.user.email).toBe(allowedEmail);
+    expect(auth.current().error).toBeNull();
+    expect(fakeSupabase.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('settles as unauthenticated without a stored session', async () => {
+    const auth = renderAuth();
+
+    await waitFor(() => expect(auth.current().status).toBe('unauthenticated'));
+    expect(auth.current().user).toBeNull();
+    expect(auth.current().error).toBeNull();
+  });
+
+  it('signs out a restored session from another domain without ever authenticating it', async () => {
+    fakeSupabase.setStoredSession(makeSession('mallory@gmail.com'));
+    const auth = renderAuth();
+
+    await waitFor(() => expect(fakeSupabase.auth.signOut).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(auth.current().status).toBe('unauthenticated'));
+
+    expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE);
+    expect(auth.current().session).toBeNull();
+    expect(auth.current().user).toBeNull();
+    expect(auth.statuses()).not.toContain('authenticated');
+  });
+
+  it('rejects a new sign-in from a lookalike domain and keeps the message after SIGNED_OUT', async () => {
+    const auth = renderAuth();
+    await waitFor(() => expect(auth.current().status).toBe('unauthenticated'));
+
+    act(() => {
+      fakeSupabase.signIn(makeSession(`mallory@mail.${env.allowedDomain}`));
+    });
+
+    await waitFor(() => expect(fakeSupabase.auth.signOut).toHaveBeenCalledTimes(1));
+    // signOut() emitted SIGNED_OUT; the access-denied message must survive it.
+    await waitFor(() => expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE));
+    expect(auth.current().status).toBe('unauthenticated');
+    expect(auth.current().user).toBeNull();
+    expect(auth.statuses()).not.toContain('authenticated');
+  });
+
+  it('authenticates a new sign-in on the allowed domain', async () => {
+    const auth = renderAuth();
+    await waitFor(() => expect(auth.current().status).toBe('unauthenticated'));
+
+    act(() => {
+      fakeSupabase.signIn(makeSession(allowedEmail));
+    });
+
+    await waitFor(() => expect(auth.current().status).toBe('authenticated'));
+    expect(auth.current().user?.email).toBe(allowedEmail);
+  });
+
+  it('signOut clears the user', async () => {
+    fakeSupabase.setStoredSession(makeSession(allowedEmail));
+    const auth = renderAuth();
+    await waitFor(() => expect(auth.current().status).toBe('authenticated'));
+
+    await act(() => auth.current().signOut());
+
+    expect(fakeSupabase.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.current().status).toBe('unauthenticated');
+    expect(auth.current().session).toBeNull();
+    expect(auth.current().user).toBeNull();
+    expect(auth.current().error).toBeNull();
+  });
+
+  it('signOut clears an access-denied error', async () => {
+    fakeSupabase.setStoredSession(makeSession('mallory@gmail.com'));
+    const auth = renderAuth();
+    await waitFor(() => expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE));
+
+    await act(() => auth.current().signOut());
+
+    expect(auth.current().error).toBeNull();
+    expect(auth.current().status).toBe('unauthenticated');
+  });
+
+  it('clearError removes the message', async () => {
+    fakeSupabase.setStoredSession(makeSession('mallory@gmail.com'));
+    const auth = renderAuth();
+    await waitFor(() => expect(auth.current().error).toBe(ACCESS_DENIED_MESSAGE));
+
+    act(() => auth.current().clearError());
+
+    expect(auth.current().error).toBeNull();
+  });
+
+  it('unsubscribes from auth changes on unmount', async () => {
+    const { unmount } = render(
+      <AuthProvider>
+        <></>
+      </AuthProvider>,
+    );
+    const subscription =
+      fakeSupabase.auth.onAuthStateChange.mock.results[0].value.data.subscription;
+
+    unmount();
+
+    expect(subscription.unsubscribe).toHaveBeenCalledTimes(1);
+  });
+});

@@ -80,7 +80,7 @@ export const missingEnvVars: RequiredVar[] = (
 
 if (__DEV__ && missingEnvVars.length > 0) {
   console.warn(
-    `[env] Missing ${missingEnvVars.join(', ')}. The app runs without them for now, but Supabase ` +
-      'features will throw until you add them to .env.',
+    `[env] Missing ${missingEnvVars.join(', ')}. Sign-in can't work without them: add them to .env ` +
+      '(see .env.example) and restart with "npx expo start -c".',
   );
 }
