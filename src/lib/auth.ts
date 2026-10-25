@@ -95,11 +95,11 @@ async function signInOnNative(queryParams: GoogleQueryParams): Promise<GoogleSig
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
   if (result.type !== 'success') return { type: 'cancelled' };
 
-  const { code, error: oauthError } = parseOAuthCallback(result.url);
-  if (oauthError) return { type: 'error', message: describeOAuthError(oauthError) };
-  if (!code) return { type: 'error', message: SIGN_IN_MESSAGES.failed };
+  const callback = parseOAuthCallback(result.url);
+  if (callback.error) return { type: 'error', message: describeOAuthError(callback) };
+  if (!callback.code) return { type: 'error', message: SIGN_IN_MESSAGES.failed };
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(callback.code);
   if (exchangeError) return { type: 'error', message: describeSignInError(exchangeError) };
   return { type: 'success' };
 }

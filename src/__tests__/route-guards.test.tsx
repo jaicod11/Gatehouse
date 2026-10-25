@@ -1,19 +1,24 @@
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 
 import { env } from '@/config/env';
+import { PROFILE_MESSAGES } from '@/lib/profiles';
 import { fakeSupabase, makeSession } from '@/test-utils/fake-supabase';
 import { ACCESS_DENIED_MESSAGE } from '@/utils/domain';
 
-// Renders the real routes in src/app (root layout with its guards, index, callback, login and
-// dashboard). Only the Supabase client is faked.
+// Renders the real routes in src/app (root layout with its guards, index, callback, login,
+// dashboard and admin). Only the Supabase client is faked.
 jest.mock('@/lib/supabase', () => jest.requireActual('@/test-utils/fake-supabase').supabaseModule);
 
 const APP_DIR = './src/app';
 const allowedEmail = `grace.hopper@${env.allowedDomain}`;
 const LOGIN_HEADING = 'Sign in to Gatehouse';
+const ADMIN_HEADING = 'Admin area';
 
-function signedInAs(email: string) {
-  fakeSupabase.setStoredSession(makeSession(email, { full_name: 'Grace Hopper' }));
+function signedInAs(email: string, role: 'admin' | 'user' = 'user') {
+  const session = makeSession(email, { full_name: 'Grace Hopper' });
+  fakeSupabase.setStoredSession(session);
+  fakeSupabase.setRole(session.user.id, role);
+  return session;
 }
 
 beforeEach(() => {
@@ -94,5 +99,66 @@ describe('route guards', () => {
     renderRouter(APP_DIR, { initialUrl: '/auth/callback?code=abc' });
 
     await waitFor(() => expect(screen).toHavePathname('/dashboard'));
+  });
+
+  it('moves from /login to /dashboard after an in-app sign-in, once the profile has loaded', async () => {
+    renderRouter(APP_DIR, { initialUrl: '/login' });
+    await waitFor(() => expect(screen.getByText(LOGIN_HEADING)).toBeTruthy());
+
+    act(() => {
+      fakeSupabase.signIn(makeSession(allowedEmail, { full_name: 'Grace Hopper' }));
+    });
+
+    await waitFor(() => expect(screen).toHavePathname('/dashboard'));
+    expect(screen.getByText('Grace Hopper')).toBeTruthy();
+  });
+
+  it('signs out with a message when the profile cannot be loaded', async () => {
+    signedInAs(allowedEmail);
+    fakeSupabase.failProfileRequests();
+    renderRouter(APP_DIR, { initialUrl: '/dashboard' });
+
+    await waitFor(() => expect(fakeSupabase.emittedEvents()).toContain('SIGNED_OUT'));
+    expect(screen).toHavePathname('/login');
+    expect(screen.getByText(PROFILE_MESSAGES.failed)).toBeTruthy();
+    expect(screen.queryByText('Grace Hopper')).toBeNull();
+  });
+});
+
+describe('admin route', () => {
+  it('sends a user opening /admin to /dashboard', async () => {
+    signedInAs(allowedEmail, 'user');
+    renderRouter(APP_DIR, { initialUrl: '/admin' });
+
+    await waitFor(() => expect(screen).toHavePathname('/dashboard'));
+    expect(screen.getByText('Grace Hopper')).toBeTruthy();
+    expect(screen.queryByText(ADMIN_HEADING)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull();
+  });
+
+  it('lets an admin open /admin directly', async () => {
+    signedInAs(allowedEmail, 'admin');
+    renderRouter(APP_DIR, { initialUrl: '/admin' });
+
+    await waitFor(() => expect(screen.getByText(ADMIN_HEADING)).toBeTruthy());
+    expect(screen).toHavePathname('/admin');
+  });
+
+  it('lets an admin reach /admin from the dashboard', async () => {
+    signedInAs(allowedEmail, 'admin');
+    renderRouter(APP_DIR, { initialUrl: '/dashboard' });
+    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy());
+
+    fireEvent.press(screen.getByRole('link', { name: 'Admin' }));
+
+    await waitFor(() => expect(screen).toHavePathname('/admin'));
+    expect(screen.getByText(ADMIN_HEADING)).toBeTruthy();
+  });
+
+  it('sends a signed-out visitor from /admin to /login', async () => {
+    renderRouter(APP_DIR, { initialUrl: '/admin' });
+
+    await waitFor(() => expect(screen).toHavePathname('/login'));
+    expect(screen.queryByText(ADMIN_HEADING)).toBeNull();
   });
 });

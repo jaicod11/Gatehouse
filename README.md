@@ -1,8 +1,8 @@
 # Gatehouse
 
 One Expo codebase for Android, iOS and web. Sign in with Google is limited to a single email
-domain (`EXPO_PUBLIC_ALLOWED_DOMAIN`), and the dashboard is only reachable with an allowed session.
-Server-side enforcement in Supabase (auth hook, profiles, roles) comes in a later step.
+domain, enforced in the app and in Supabase (an auth hook plus row-level security). The dashboard
+is only reachable with an allowed session, and an admin area only with the admin role.
 
 **Stack:** Expo SDK 57 · Expo Router (`src/app`) · TypeScript · Supabase Auth (Google, PKCE) ·
 NativeWind v4 (Tailwind CSS v3) · Reanimated 4 · expo-blur · expo-linear-gradient ·
@@ -73,7 +73,11 @@ service_role key. The backend must enforce the domain restriction as well.
   sessions can exceed SecureStore's ~2KB comfort zone. Tokens auto-refresh only while the app is in
   the foreground.
 - Closing the sign-in sheet is not an error. Network failures and OAuth errors in the callback URL
-  show a short message; the provider's raw `error_description` is never displayed.
+  show a short message; the provider's raw `error_description` is never displayed. A rejection by
+  the domain hook (its error carries `DOMAIN_NOT_ALLOWED`) shows the access-denied message.
+- Once a session passes the domain check, the app loads the user's row from `public.profiles`
+  (`src/lib/profiles.ts`). The status stays `loading` until it arrives; if it can't be loaded, the
+  user is signed out with a message rather than left half signed in.
 
 **Domain restriction**, in layers:
 
@@ -85,8 +89,15 @@ service_role key. The backend must enforce the domain restriction as well.
    allowed domain, so `mail.<domain>`, `x<domain>` and `<domain>.evil.com` are rejected. A failing
    session is signed out immediately, is never exposed as `authenticated`, and the login screen
    shows "Access restricted. Please login using your official domain email."
-3. Server side (next step): a Supabase auth hook and row-level security, since client checks can
-   be bypassed.
+3. Server side, since anything in the client can be bypassed (`supabase/migrations/`):
+   - A **Before User Created** auth hook refuses to create a user whose email isn't on a domain in
+     `public.allowed_domains` (same exact-match rule), returning HTTP 403 with `DOMAIN_NOT_ALLOWED`.
+     A rejected Google account never gets a row in `auth.users`, a session or a profile.
+   - **Row-level security** on `public.profiles`: users read their own row, admins read every row,
+     and every policy also requires the email in the caller's JWT to be on an allowed domain, so a
+     user from another domain created before the hook existed reads nothing. Clients have no
+     insert/update/delete rights; roles change only through `set_user_role`.
+   - `allowed_domains` is unreadable by clients, and `anon` can access nothing.
 
 `EXPO_PUBLIC_GOOGLE_HD_HINT=false` exists to demonstrate this. It drops `hd` (keeping
 `prompt=select_account`), so Google's account picker offers any account; restart with
@@ -98,6 +109,14 @@ with the access-denied message. Leave it unset (on) in production.
 Typing or refreshing `/dashboard` while signed out lands on `/login` (also on web); signed-in
 users opening `/login` land on `/dashboard`.
 
+**Roles:** each profile has `role` `'user'` (default) or `'admin'`, exposed as `role` by `useAuth()`.
+`(app)/_layout.tsx` guards `/admin` with `Stack.Protected guard={role === 'admin'}`, so a normal
+user opening `/admin` lands on `/dashboard`. Admins change roles with the `set_user_role` RPC,
+which also checks the caller is an admin and refuses to let an admin demote themselves.
+
+**Database setup:** run the migrations and enable the hook as described in
+[docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md).
+
 ## Project layout
 
 ```
@@ -107,17 +126,22 @@ src/
     index.tsx            redirects to /dashboard or /login
     auth/callback.tsx    OAuth return URL: loader, then hands over to index
     (auth)/login.tsx     Google sign-in
+    (app)/_layout.tsx    signed-in area; guards /admin by role
     (app)/dashboard.tsx  signed-in user + component preview
+    (app)/admin.tsx      admin area (placeholder)
   components/
     ui/                  design-system primitives (import from '@/components/ui')
     google-sign-in-button.tsx, google-logo.tsx, full-screen-loader.tsx, logo-mark.tsx
   config/env.ts          typed env access
   constants/theme.ts     design tokens (single source of truth)
   context/auth-context.tsx  AuthProvider + useAuth()
-  lib/                   supabase.ts (client), auth.ts (Google flow), session storage, callbacks
+  lib/                   supabase.ts (client), auth.ts (Google flow), profiles.ts,
+                         session storage, OAuth callback parsing
   utils/domain.ts        isAllowedEmail, ACCESS_DENIED_MESSAGE
   test-utils/            fake Supabase client and Jest helpers
   **/__tests__/          Jest tests (*.test.ts / *.test.tsx)
+supabase/migrations/     SQL: allowed domains, auth hook, profiles, RLS and roles
+docs/SUPABASE_SETUP.md   running the migrations and enabling the hook
 ```
 
 ## Design system

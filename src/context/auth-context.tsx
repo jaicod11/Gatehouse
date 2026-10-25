@@ -14,6 +14,7 @@ import { Platform } from 'react-native';
 import { env } from '@/config/env';
 import { signInWithGoogle as startGoogleSignIn } from '@/lib/auth';
 import { readWebCallbackError } from '@/lib/oauth-callback';
+import { PROFILE_MESSAGES, fetchProfile, type Profile, type UserRole } from '@/lib/profiles';
 import { supabase } from '@/lib/supabase';
 import { ACCESS_DENIED_MESSAGE, isAllowedEmail } from '@/utils/domain';
 
@@ -27,11 +28,14 @@ export type AuthUser = {
 };
 
 export type AuthContextValue = {
-  /** "loading" until the stored session has been checked. */
+  /** "loading" until the stored session and, for a valid one, the user's profile are loaded. */
   status: AuthStatus;
-  /** Only ever set for a session on the allowed domain. */
+  /** Only ever set for a session on the allowed domain whose profile has loaded. */
   session: Session | null;
   user: AuthUser | null;
+  /** The user's row in public.profiles; set exactly when status is "authenticated". */
+  profile: Profile | null;
+  role: UserRole | null;
   isSigningIn: boolean;
   /** A short message for the user, e.g. ACCESS_DENIED_MESSAGE. */
   error: string | null;
@@ -40,52 +44,114 @@ export type AuthContextValue = {
   clearError: () => void;
 };
 
-type AuthState = Pick<AuthContextValue, 'status' | 'session' | 'error'>;
+type AuthState = Pick<AuthContextValue, 'status' | 'session' | 'profile' | 'error'>;
+
+const SIGNED_OUT: Omit<AuthState, 'error'> = {
+  status: 'unauthenticated',
+  session: null,
+  profile: null,
+};
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
  * Owns the Supabase session and enforces the domain restriction on the client: a session whose
  * email isn't on the allowed domain is signed out at once and never exposed as "authenticated".
+ * An allowed session only becomes "authenticated" once the user's profile (and so their role) has
+ * loaded; if that fails, the user is signed out with a message instead of being half signed in.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(() => ({
     status: 'loading',
     session: null,
+    profile: null,
     error: readWebCallbackError(),
   }));
   const [isSigningIn, setIsSigningIn] = useState(false);
   const signingInRef = useRef(false);
+  // The user whose profile is loaded or loading, and their latest session, so repeat events for
+  // the same user (token refresh, tab refocus, a duplicate SIGNED_IN) don't refetch it.
+  const profileUserRef = useRef<string | null>(null);
+  const latestSessionRef = useRef<Session | null>(null);
+  // Bumped whenever the session is replaced or ended, so a profile request for an older session
+  // can't land after it.
+  const sessionVersionRef = useRef(0);
 
   useEffect(() => {
     let active = true;
     let receivedEvent = false;
-    let rejecting = false;
+    let endingSession = false;
 
-    const endRejectedSession = async () => {
-      if (rejecting) return;
-      rejecting = true;
+    const forgetSession = () => {
+      sessionVersionRef.current++;
+      profileUserRef.current = null;
+      latestSessionRef.current = null;
+    };
+
+    const endSession = async () => {
+      if (endingSession) return;
+      endingSession = true;
       try {
         await supabase.auth.signOut();
       } catch {
         // Nothing to show: the session is already hidden from the app.
       } finally {
-        rejecting = false;
+        endingSession = false;
+      }
+    };
+
+    // Never exposes the session: the state flips to signed out in the same update.
+    const reject = (message: string) => {
+      forgetSession();
+      setState({ ...SIGNED_OUT, error: message });
+      void endSession();
+    };
+
+    const loadProfile = async (userId: string) => {
+      const version = ++sessionVersionRef.current;
+      setState({ status: 'loading', session: null, profile: null, error: null });
+
+      let profile: Profile | null = null;
+      let failed = false;
+      try {
+        profile = await fetchProfile(userId);
+      } catch {
+        failed = true;
+      }
+      if (!active || version !== sessionVersionRef.current) return;
+
+      if (failed || !profile) {
+        reject(failed ? PROFILE_MESSAGES.failed : PROFILE_MESSAGES.missing);
+      } else {
+        setState({
+          status: 'authenticated',
+          session: latestSessionRef.current,
+          profile,
+          error: null,
+        });
       }
     };
 
     const applySession = (session: Session | null) => {
       if (!active) return;
       if (!session) {
-        // Keep any error, so the SIGNED_OUT that follows a domain rejection keeps its message.
-        setState((prev) => ({ status: 'unauthenticated', session: null, error: prev.error }));
-      } else if (isAllowedEmail(session.user.email, env.allowedDomain)) {
-        setState({ status: 'authenticated', session, error: null });
+        forgetSession();
+        // Keep any error, so the SIGNED_OUT that follows a rejection keeps its message.
+        setState((prev) => ({ ...SIGNED_OUT, error: prev.error }));
+        return;
+      }
+      if (!isAllowedEmail(session.user.email, env.allowedDomain)) {
+        reject(ACCESS_DENIED_MESSAGE);
+        return;
+      }
+
+      const sameUser = session.user.id === profileUserRef.current;
+      profileUserRef.current = session.user.id;
+      latestSessionRef.current = session;
+      if (sameUser) {
+        setState((prev) => (prev.status === 'authenticated' ? { ...prev, session } : prev));
       } else {
-        // Decided in the same update that receives the session, so a wrong-domain user never
-        // renders as authenticated, not even for one frame.
-        setState({ status: 'unauthenticated', session: null, error: ACCESS_DENIED_MESSAGE });
-        void endRejectedSession();
+        void loadProfile(session.user.id);
       }
     };
 
@@ -151,6 +217,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    sessionVersionRef.current++;
+    profileUserRef.current = null;
+    latestSessionRef.current = null;
     try {
       await supabase.auth.signOut();
     } catch {
@@ -158,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       signingInRef.current = false;
       setIsSigningIn(false);
-      setState({ status: 'unauthenticated', session: null, error: null });
+      setState({ ...SIGNED_OUT, error: null });
     }
   }, []);
 
@@ -172,7 +241,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, user, isSigningIn, signInWithGoogle, signOut, clearError }),
+    () => ({
+      ...state,
+      user,
+      role: state.profile?.role ?? null,
+      isSigningIn,
+      signInWithGoogle,
+      signOut,
+      clearError,
+    }),
     [state, user, isSigningIn, signInWithGoogle, signOut, clearError],
   );
 

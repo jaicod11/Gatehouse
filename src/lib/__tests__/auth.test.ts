@@ -6,6 +6,7 @@ import { env } from '@/config/env';
 import { signInWithGoogle } from '@/lib/auth';
 import { SIGN_IN_MESSAGES } from '@/lib/oauth-callback';
 import { fakeSupabase } from '@/test-utils/fake-supabase';
+import { ACCESS_DENIED_MESSAGE } from '@/utils/domain';
 
 // The native flow (jest-expo runs as iOS). Faked: the Supabase client, the system browser, and
 // makeRedirectUri (it reads the native app manifest, which doesn't exist under Jest).
@@ -118,6 +119,22 @@ describe('signInWithGoogle (native)', () => {
     await expect(signInWithGoogle()).resolves.toEqual({
       type: 'error',
       message: SIGN_IN_MESSAGES.denied,
+    });
+    expect(fakeSupabase.auth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
+  it('shows the access-denied message when the domain hook rejected the sign-up', async () => {
+    const hookMessage = encodeURIComponent(
+      "DOMAIN_NOT_ALLOWED: sign-ups are limited to the organisation's email domain.",
+    );
+    openAuthSession.mockResolvedValue({
+      type: 'success',
+      url: `gatehouse://auth/callback?error=server_error&error_description=${hookMessage}`,
+    });
+
+    await expect(signInWithGoogle()).resolves.toEqual({
+      type: 'error',
+      message: ACCESS_DENIED_MESSAGE,
     });
     expect(fakeSupabase.auth.exchangeCodeForSession).not.toHaveBeenCalled();
   });

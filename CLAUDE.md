@@ -19,7 +19,8 @@ Expo SDK 57 + TypeScript, Expo Router (routes in src/app), Supabase Auth with Go
 ## Key decisions
 
 - The allowed domain comes ONLY from EXPO_PUBLIC_ALLOWED_DOMAIN (src/config/env.ts); never hardcode it, including in UI copy. It's set to a college domain for local testing and to hbplus.fit for deployment.
-- Domain is enforced in layers: Google's `hd` param (UX hint only), a client-side check that signs the user out immediately, and a server-side Supabase hook + row-level security (added in a later step).
+- Domain is enforced in layers: Google's `hd` param (UX hint only), a client-side check that signs the user out immediately, and server-side a Supabase Before User Created hook + row-level security (supabase/migrations; the user runs them by hand, see docs/SUPABASE_SETUP.md). The hook's error carries the marker `DOMAIN_NOT_ALLOWED`, which the client maps to ACCESS_DENIED_MESSAGE; keep the SQL and `src/lib/oauth-callback.ts` in sync.
+- Never connect to the user's database; write SQL as idempotent migrations in supabase/migrations.
 - Never use or reference the Supabase secret / service_role key in the app. Never log tokens or sessions.
 - UI must look premium: dark theme, design tokens in src/constants/theme.ts, reusable primitives in src/components/ui.
 
@@ -33,7 +34,8 @@ Expo SDK 57 + TypeScript, Expo Router (routes in src/app), Supabase Auth with Go
 
 - Step 1 done: scaffold, design system, placeholder Login/Dashboard.
 - Step 2 done: Supabase client, Google login, domain check, auth context, route guards, tests.
-- Step 3 (next): server-side enforcement (Supabase auth hook, profiles table, roles, RLS).
+- Step 3 done: server-side enforcement (allowed_domains, Before User Created hook, profiles + triggers, RLS, is_admin, set_user_role), profile/role in the auth context, role-guarded /admin placeholder.
+- Next: real admin screen content (user list, role changes via set_user_role); dashboard redesign.
 
 ## Testing notes
 

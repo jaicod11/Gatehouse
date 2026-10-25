@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import Head from 'expo-router/head';
 import {
   Activity,
@@ -6,6 +7,7 @@ import {
   MailPlus,
   Plus,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   Users,
 } from 'lucide-react-native';
@@ -53,7 +55,7 @@ const SWATCHES: { name: string; value: string }[] = [
 ];
 
 export default function DashboardScreen() {
-  const { user, signOut } = useAuth();
+  const { user, role, signOut } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
 
   // Null only for the moment between signing out and the guard leaving this screen.
@@ -82,19 +84,33 @@ export default function DashboardScreen() {
             <View className="flex-1 gap-1">
               <Caption variant="overline">Welcome back</Caption>
               <Heading level={2}>{user.fullName ?? user.email}</Heading>
-              <Body size="sm" tone="secondary">
-                {user.email}
-              </Body>
+              <View className="flex-row flex-wrap items-center gap-2">
+                <Body size="sm" tone="secondary">
+                  {user.email}
+                </Body>
+                <Badge
+                  tone={role === 'admin' ? 'accent' : 'neutral'}
+                  dot
+                  label={role === 'admin' ? 'Admin' : 'User'}
+                />
+              </View>
             </View>
           </View>
-          <Button
-            variant="secondary"
-            size="sm"
-            label={signingOut ? 'Signing out…' : 'Sign out'}
-            leftIcon={LogOut}
-            loading={signingOut}
-            onPress={handleSignOut}
-          />
+          <View className="flex-row flex-wrap gap-3">
+            {role === 'admin' ? (
+              <Link href="/admin" asChild>
+                <Button variant="secondary" size="sm" label="Admin" leftIcon={ShieldCheck} />
+              </Link>
+            ) : null}
+            <Button
+              variant="secondary"
+              size="sm"
+              label={signingOut ? 'Signing out…' : 'Sign out'}
+              leftIcon={LogOut}
+              loading={signingOut}
+              onPress={handleSignOut}
+            />
+          </View>
         </View>
 
         <View className="flex-row flex-wrap gap-4">
