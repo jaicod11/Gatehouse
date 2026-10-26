@@ -113,7 +113,8 @@ sequenceDiagram
 
 ## How domain restriction works
 
-Three layers, each with its own job. Only the last two are enforcement.
+Three layers, each with its own job. Only the server layer is real enforcement; the client check
+gives the immediate message and signs the user out.
 
 1. **Google's `hd` hint** pre-filters the account picker to the allowed domain. It's a UX hint:
    anyone can strip it from the URL or pick "Use another account". **The live demo runs with it
