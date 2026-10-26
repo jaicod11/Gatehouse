@@ -330,7 +330,7 @@ native sign-in. It hasn't been tested on a device yet.
 ### Mobile browsers
 
 Phones get the full sign-in through the web build: open the live demo in the phone's browser.
-It's the same web app, laid out for phone widths (checked at phone width in a desktop browser).
+It's the same web app, laid out for phone widths (tested on the live site in Chrome on a phone).
 
 ## Known limitations and next steps
 
