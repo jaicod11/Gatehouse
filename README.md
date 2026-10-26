@@ -102,11 +102,11 @@ sequenceDiagram
   `/auth/callback?code=...`, and supabase-js exchanges the code on load (`detectSessionInUrl`).
 - **iOS / Android:** the app gets the Google URL from Supabase, opens it with
   `WebBrowser.openAuthSessionAsync`, reads `code` from the returned `gatehouse://auth/callback` URL
-  and calls `exchangeCodeForSession` itself. If the OS stops the app while Google's page is open,
-  the callback can still finish the sign-in when it reopens the app: it's picked up from the launch
-  URL, a link event or the `/auth/callback` route, and each code is exchanged exactly once
-  ([`oauth-redirect.native.ts`](src/lib/oauth-redirect.native.ts)). That needs the callback to
-  reach the app, which Expo Go doesn't manage (see [Running on mobile](#running-on-mobile)).
+  and calls `exchangeCodeForSession` itself. A callback that arrives another way (as the app's
+  launch URL, a link event or the `/auth/callback` route) is completed too, and each code is
+  exchanged exactly once ([`oauth-redirect.native.ts`](src/lib/oauth-redirect.native.ts)). In Expo
+  Go the code doesn't reach the app yet: Supabase redirects to the web app instead (see
+  [Running on mobile](#running-on-mobile)).
 - Until the stored session and the profile are loaded, the app shows only a branded loader: no
   flash of the dashboard or of the login page. Closing Google's sheet is not an error. Network
   and OAuth errors become short messages, and the provider's raw error text is never shown.
@@ -260,25 +260,32 @@ npm run web            # Android / iOS: see "Running on mobile"
 
 On a physical Android phone, in **Expo Go** (SDK 57):
 
-- **Works:** the app runs natively and the UI renders correctly. PKCE uses S256 (the development
-  log shows `code_challenge_method=s256`).
-- **Doesn't work: Google sign-in doesn't complete.** After Google's page, Expo Go restarts the
-  JavaScript with the plain `exp://` project URL and the OAuth callback is lost. This happened on
-  all four attempts.
+- **Works:** the app runs natively and the UI renders correctly. It opens Google's sign-in in a
+  browser tab, and you can sign in with Google. PKCE uses S256 (the development log shows
+  `code_challenge_method=s256`).
+- **Doesn't work: the sign-in never reaches the app.** After Google, Supabase redirects the tab to
+  the Site URL (the Netlify web app) instead of the app's `exp://<ip>:8081/--/auth/callback`
+  redirect. See [What happens in Expo Go](#what-happens-in-expo-go).
 
 **Not tested:** a development build (Android or iOS) and iOS in general. The native session
 storage, the PKCE shim and the cold-start callback handling are covered by Jest tests, not by a
 device run.
 
-### Why Expo Go loses the callback
+### What happens in Expo Go
 
-In Expo Go, Gatehouse runs inside Expo Go's own app, so the OAuth callback is an
-`exp://<your-ip>:8081/--/auth/callback?code=...` link that Expo Go receives, not Gatehouse. While
-Google's page is open, Expo Go sits in the background. When the browser hands the callback back,
-Expo Go comes back with the JavaScript restarted from the project URL, without the callback's path
-or code. The restart also loses the `openAuthSessionAsync` call that was waiting for the result.
-The app recovers a callback that reaches its JavaScript (see the
-[authentication flow](#authentication-flow)), but in Expo Go it never arrives.
+In Expo Go, the app's redirect URL is `exp://<ip>:8081/--/auth/callback`. Both `exp://**` and that
+exact URL are in Supabase's **Redirect URLs**, yet after Google, Supabase sends the browser tab to
+the **Site URL** (the Netlify web app) instead. Supabase's auth logs show the app's sign-ins
+reaching `/callback` with no token exchange afterwards, so the authorization code never reaches the
+app and it stays signed out.
+
+**Root cause: not confirmed.** Likely candidates are how Supabase's allow-list handles `exp://`
+URLs, or the `redirect_to` value the app sends.
+
+**Next steps:**
+
+1. Inspect `redirect_to` in the `/authorize` entry of Supabase's auth logs for an app sign-in.
+2. Test a development build with the `gatehouse://` scheme (below).
 
 ### Recommended: a development build
 
@@ -348,6 +355,8 @@ It's the same web app, laid out for phone widths (tested on the live site in Chr
 - **Deleted users' access tokens** stay valid until they expire (an hour by default), though RLS
   still gives them nothing.
 - **Admin bootstrap** trusts whoever signs up first when there's no admin (see above).
-- **Native sign-in doesn't complete in Expo Go.** On an Android phone, Expo Go loses the OAuth
-  callback. A development build should fix this but hasn't been tested on a device yet; mobile
-  browsers get the full flow through the web build (see [Running on mobile](#running-on-mobile)).
+- **Native sign-in doesn't complete in Expo Go.** On an Android phone, Supabase redirects to the
+  Site URL instead of the app's `exp://` callback, so the code never reaches the app. The root
+  cause isn't confirmed yet (see [What happens in Expo Go](#what-happens-in-expo-go)); a
+  development build is the next thing to test. Mobile browsers get the full flow through the web
+  build.
