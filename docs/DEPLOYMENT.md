@@ -25,12 +25,12 @@ the **CI** workflow passes in the repository's Actions tab.
 3. Before the first deploy, add the environment variables (**Project configuration → Environment
    variables**):
 
-   | Key                             | Value                                      |
-   | ------------------------------- | ------------------------------------------ |
-   | `EXPO_PUBLIC_SUPABASE_URL`      | `https://<project>.supabase.co`            |
-   | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | the publishable key (`sb_publishable_...`) |
-   | `EXPO_PUBLIC_ALLOWED_DOMAIN`    | `vitapstudent.ac.in` for now (see step 6)  |
-   | `EXPO_PUBLIC_GOOGLE_HD_HINT`    | `false`                                    |
+   | Key                             | Value                                         |
+   | ------------------------------- | --------------------------------------------- |
+   | `EXPO_PUBLIC_SUPABASE_URL`      | `https://<project>.supabase.co`               |
+   | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | the publishable key (`sb_publishable_...`)    |
+   | `EXPO_PUBLIC_ALLOWED_DOMAIN`    | `hbplus.fit` (to change it later, see step 6) |
+   | `EXPO_PUBLIC_GOOGLE_HD_HINT`    | `false`                                       |
 
    `EXPO_PUBLIC_GOOGLE_HD_HINT=false` turns off Google's `hd` hint so reviewers can pick an account
    from another domain and see the rejection; with the hint on, Google may lock the account picker
@@ -68,7 +68,7 @@ you read.
 
 ## 5. Check the deploy
 
-- [ ] `https://<site>.netlify.app` shows the login page with "@vitapstudent.ac.in accounts only".
+- [ ] `https://<site>.netlify.app` shows the login page with "@hbplus.fit accounts only".
 - [ ] Sign in with your account. You land on the dashboard. If this is the first sign-up, you're
       admin (check with `select email, role from public.profiles;`).
 - [ ] Reload `/dashboard` and open `/admin` directly: both stay put. Open `/privacy` in a private
@@ -92,7 +92,8 @@ you read.
 
 ## 6. Switch the allowed domain
 
-Review with `vitapstudent.ac.in` first. To move to `hbplus.fit`, do these together:
+Gatehouse was developed and tested on `vitapstudent.ac.in`, and the live site was then moved to
+`hbplus.fit` with these steps. To switch domains, do these together (shown for that move):
 
 1. **Netlify:** set `EXPO_PUBLIC_ALLOWED_DOMAIN` to `hbplus.fit`, then **Deploys → Trigger deploy →
    Clear cache and deploy project**.
@@ -131,7 +132,8 @@ Review with `vitapstudent.ac.in` first. To move to `hbplus.fit`, do these togeth
 ### After the switch
 
 - [ ] The login page and the privacy page say hbplus.fit (if not, the deploy didn't clear the cache).
-- [ ] Google's account picker suggests hbplus.fit accounts.
+- [ ] Google's account picker shows every account, because `EXPO_PUBLIC_GOOGLE_HD_HINT` is `false`
+      (with the hint on, it would suggest hbplus.fit accounts).
 - [ ] An hbplus.fit account signs in, and the intended person is the admin.
 - [ ] A vitapstudent.ac.in account gets the access-denied message. After step 4, retrying creates no
       row in `auth.users`.

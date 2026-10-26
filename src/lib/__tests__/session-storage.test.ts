@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import {
@@ -36,9 +35,6 @@ jest.mock('expo-secure-store', () => {
     }),
   };
 });
-jest.mock('@react-native-async-storage/async-storage', () =>
-  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
 
 const KEY = 'sb-project-auth-token';
 
@@ -52,11 +48,10 @@ function storedKeys(): string[] {
   return [...mockSecureStore.keys()].sort();
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   mockSecureStore.clear();
   mockFailures.readKeys.clear();
   mockFailures.writeKeys.clear();
-  await AsyncStorage.clear();
   jest.clearAllMocks();
 });
 
@@ -199,25 +194,5 @@ describe('chunked SecureStore adapter', () => {
 
     expect(await storage.getItem(oddKey)).toBe(bigValue(4000));
     for (const key of storedKeys()) expect(key).toMatch(/^[\w.-]+$/);
-  });
-
-  it('deletes the old AES-format entries on first read, so the user just signs in again', async () => {
-    await AsyncStorage.setItem(KEY, 'old ciphertext');
-    mockSecureStore.set(KEY, 'old aes key hex');
-
-    // The first launch after the update: a fresh module (the cleanup runs once per key per run).
-    let result: string | null = 'not read';
-    await jest.isolateModulesAsync(async () => {
-      const updated = jest.requireActual<typeof import('@/lib/session-storage.native')>(
-        '@/lib/session-storage.native',
-      );
-      result = await updated.sessionStorageAdapter.getItem(KEY);
-    });
-
-    expect(result).toBeNull();
-
-    expect(await AsyncStorage.getItem(KEY)).toBeNull();
-    expect(mockSecureStore.has(KEY)).toBe(false);
-    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith(KEY);
   });
 });

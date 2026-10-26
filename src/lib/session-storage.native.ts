@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SupportedStorage } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 
@@ -88,25 +87,6 @@ async function deleteChunks(safeKey: string, from: number, knownCount: number): 
   }
 }
 
-// Earlier versions kept an AES key in SecureStore and the encrypted session in AsyncStorage, both
-// under the plain key name. Remove those once per key per app run; affected users sign in again.
-const legacyChecked = new Set<string>();
-
-async function removeLegacyEntries(key: string): Promise<void> {
-  if (legacyChecked.has(key)) return;
-  legacyChecked.add(key);
-  try {
-    const [ciphertext, aesKey] = await Promise.all([
-      AsyncStorage.getItem(key),
-      SecureStore.getItemAsync(key).catch(() => 'unreadable'),
-    ]);
-    if (ciphertext !== null) await AsyncStorage.removeItem(key);
-    if (aesKey !== null) await SecureStore.deleteItemAsync(key);
-  } catch {
-    // Best effort: the old entries are never read, so leftovers are harmless.
-  }
-}
-
 // Operations on the same key run one at a time, so a read never sees a half-finished write.
 const queues = new Map<string, Promise<unknown>>();
 
@@ -123,7 +103,6 @@ export const sessionStorageAdapter: SupportedStorage = {
   /** The stored value, or null if it's missing or incomplete. Never throws, never deletes. */
   getItem: (key) =>
     serialized(key, async () => {
-      await removeLegacyEntries(key);
       const safeKey = toSecureStoreKey(key);
       const count = await readCount(safeKey);
       if (count === null) return null;
@@ -137,7 +116,6 @@ export const sessionStorageAdapter: SupportedStorage = {
 
   setItem: (key, value) =>
     serialized(key, async () => {
-      await removeLegacyEntries(key);
       const safeKey = toSecureStoreKey(key);
       const chunks = splitIntoChunks(value);
       const previousCount = (await readCount(safeKey)) ?? 0;
@@ -154,7 +132,6 @@ export const sessionStorageAdapter: SupportedStorage = {
 
   removeItem: (key) =>
     serialized(key, async () => {
-      await removeLegacyEntries(key);
       const safeKey = toSecureStoreKey(key);
       const previousCount = (await readCount(safeKey)) ?? 0;
       await SecureStore.deleteItemAsync(countKey(safeKey));
