@@ -290,8 +290,8 @@ URLs, or the `redirect_to` value the app sends.
 ### Recommended: a development build
 
 A development build is Gatehouse's own app (`com.jaideep.gatehouse`) with the `gatehouse://`
-scheme registered to it, so the callback goes straight to the app. This is the setup to use for
-native sign-in. It hasn't been tested on a device yet.
+scheme registered to it, so the redirect no longer depends on an `exp://` URL. It's the expected
+fix for native sign-in, but it hasn't been tested yet.
 
 1. In Supabase, **Authentication → URL Configuration → Redirect URLs** must include
    `gatehouse://auth/callback`.
